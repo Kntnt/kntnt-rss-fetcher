@@ -1,0 +1,402 @@
+[
+    {
+        "key": "group_67ae0b26eda6e",
+        "title": "Press release feeds",
+        "fields": [
+            {
+                "key": "field_67ae0b279fcda",
+                "label": "Flow for regulatory press releases",
+                "name": "kntnt_rss_regulatory_press_releases",
+                "aria-label": "",
+                "type": "url",
+                "instructions": "URL of regulatory press release feed.",
+                "required": 1,
+                "conditional_logic": 0,
+                "wrapper": {
+                    "width": "",
+                    "class": "",
+                    "id": ""
+                },
+                "default_value": "",
+                "allow_in_bindings": 0,
+                "placeholder": ""
+            },
+            {
+                "key": "field_67ae131e497d9",
+                "label": "Flow for non-regulatory press releases",
+                "name": "kntnt_rss_non_regulatory_press_releases",
+                "aria-label": "",
+                "type": "url",
+                "instructions": "URL of non-regulatory press release feed.",
+                "required": 1,
+                "conditional_logic": 0,
+                "wrapper": {
+                    "width": "",
+                    "class": "",
+                    "id": ""
+                },
+                "default_value": "",
+                "allow_in_bindings": 0,
+                "placeholder": ""
+            },
+            {
+                "key": "field_67ae16097b756",
+                "label": "Author",
+                "name": "kntnt_rss_author",
+                "aria-label": "",
+                "type": "user",
+                "instructions": "Select yourself or a specially created user as the author of RSS items. This is needed internally in WordPress, but will not be displayed externally.",
+                "required": 1,
+                "conditional_logic": 0,
+                "wrapper": {
+                    "width": "",
+                    "class": "",
+                    "id": ""
+                },
+                "role": "",
+                "return_format": "id",
+                "multiple": 0,
+                "allow_null": 0,
+                "allow_in_bindings": 0,
+                "bidirectional": 0,
+                "bidirectional_target": []
+            },
+            {
+                "key": "field_67ae0e129fcdd",
+                "label": "Max items",
+                "name": "kntnt_rss_max_items",
+                "aria-label": "",
+                "type": "number",
+                "instructions": "Maximum number of items to store.",
+                "required": 1,
+                "conditional_logic": 0,
+                "wrapper": {
+                    "width": "50",
+                    "class": "",
+                    "id": ""
+                },
+                "default_value": 10,
+                "min": 1,
+                "max": 100,
+                "allow_in_bindings": 0,
+                "placeholder": "",
+                "step": "",
+                "prepend": "",
+                "append": ""
+            },
+            {
+                "key": "field_67ae0d079fcdc",
+                "label": "Time between polls",
+                "name": "kntnt_rss_interval",
+                "aria-label": "",
+                "type": "number",
+                "instructions": "The minimum number of minutes that must elapse between two downloads of the RSS feed.",
+                "required": 1,
+                "conditional_logic": 0,
+                "wrapper": {
+                    "width": "50",
+                    "class": "",
+                    "id": ""
+                },
+                "default_value": 60,
+                "min": 1,
+                "max": "",
+                "allow_in_bindings": 0,
+                "placeholder": "",
+                "step": 1,
+                "prepend": "",
+                "append": "minutes"
+            }
+        ],
+        "location": [
+            [
+                {
+                    "param": "options_page",
+                    "operator": "==",
+                    "value": "kntnt-rss-press-releases"
+                }
+            ]
+        ],
+        "menu_order": 0,
+        "position": "acf_after_title",
+        "style": "seamless",
+        "label_placement": "top",
+        "instruction_placement": "field",
+        "hide_on_screen": "",
+        "active": true,
+        "description": "Kntnt Press Release Feed",
+        "show_in_rest": 0
+    },
+    {
+        "key": "group_67ae1a31df1e5",
+        "title": "Press release post",
+        "fields": [
+            {
+                "key": "field_67ae5fe2767db",
+                "label": "Item identifier",
+                "name": "kntnt_rss_item_id",
+                "aria-label": "",
+                "type": "text",
+                "instructions": "A unique string that distinguishes one item in the RSS feed from another.",
+                "required": 1,
+                "conditional_logic": 0,
+                "wrapper": {
+                    "width": "",
+                    "class": "",
+                    "id": ""
+                },
+                "default_value": "",
+                "maxlength": "",
+                "allow_in_bindings": 0,
+                "placeholder": "",
+                "prepend": "",
+                "append": ""
+            },
+            {
+                "key": "field_67ae1a32cee4b",
+                "label": "Press release type",
+                "name": "kntnt_rss_item_type",
+                "aria-label": "",
+                "type": "taxonomy",
+                "instructions": "",
+                "required": 1,
+                "conditional_logic": 0,
+                "wrapper": {
+                    "width": "",
+                    "class": "",
+                    "id": ""
+                },
+                "taxonomy": "rss-item-type",
+                "add_term": 0,
+                "save_terms": 1,
+                "load_terms": 1,
+                "return_format": "object",
+                "field_type": "radio",
+                "allow_null": 0,
+                "allow_in_bindings": 0,
+                "bidirectional": 0,
+                "multiple": 0,
+                "bidirectional_target": []
+            },
+            {
+                "key": "field_67ae500e55544",
+                "label": "Link to original",
+                "name": "kntnt_rss_link",
+                "aria-label": "",
+                "type": "url",
+                "instructions": "Link to the specific webpage of the article, post or content described in the current item.",
+                "required": 0,
+                "conditional_logic": 0,
+                "wrapper": {
+                    "width": "",
+                    "class": "",
+                    "id": ""
+                },
+                "default_value": "",
+                "allow_in_bindings": 0,
+                "placeholder": ""
+            }
+        ],
+        "location": [
+            [
+                {
+                    "param": "post_type",
+                    "operator": "==",
+                    "value": "rss-item"
+                }
+            ]
+        ],
+        "menu_order": 0,
+        "position": "side",
+        "style": "default",
+        "label_placement": "top",
+        "instruction_placement": "field",
+        "hide_on_screen": "",
+        "active": true,
+        "description": "Kntnt Press Release Feed",
+        "show_in_rest": 0
+    },
+    {
+        "key": "taxonomy_67ae18018c4b3",
+        "title": "RSS item types",
+        "menu_order": 0,
+        "active": true,
+        "taxonomy": "rss-item-type",
+        "object_type": [
+            "rss-item"
+        ],
+        "advanced_configuration": 1,
+        "import_source": "",
+        "import_date": "",
+        "labels": {
+            "name": "RSS item types",
+            "singular_name": "RSS item type",
+            "menu_name": "RSS item types",
+            "all_items": "All RSS item types",
+            "edit_item": "Edit RSS item type",
+            "view_item": "View RSS item type",
+            "update_item": "Update RSS item type",
+            "add_new_item": "Add New RSS item type",
+            "new_item_name": "New RSS item type Name",
+            "search_items": "Search RSS item types",
+            "popular_items": "Popular RSS item types",
+            "separate_items_with_commas": "Separate rss item types with commas",
+            "add_or_remove_items": "Add or remove rss item types",
+            "choose_from_most_used": "Choose from the most used rss item types",
+            "most_used": "",
+            "not_found": "No rss item types found",
+            "no_terms": "No rss item types",
+            "name_field_description": "",
+            "slug_field_description": "",
+            "desc_field_description": "",
+            "items_list_navigation": "RSS item types list navigation",
+            "items_list": "RSS item types list",
+            "back_to_items": "← Go to rss item types",
+            "item_link": "RSS item type Link",
+            "item_link_description": "A link to a rss item type"
+        },
+        "description": "",
+        "capabilities": {
+            "manage_terms": "manage_categories",
+            "edit_terms": "manage_categories",
+            "delete_terms": "manage_categories",
+            "assign_terms": "edit_posts"
+        },
+        "public": 1,
+        "publicly_queryable": 1,
+        "hierarchical": 0,
+        "show_ui": 0,
+        "show_in_menu": true,
+        "show_in_nav_menus": 0,
+        "show_in_rest": 1,
+        "rest_base": "",
+        "rest_namespace": "wp\/v2",
+        "rest_controller_class": "WP_REST_Terms_Controller",
+        "show_tagcloud": 0,
+        "show_in_quick_edit": 0,
+        "show_admin_column": 1,
+        "rewrite": {
+            "permalink_rewrite": "taxonomy_key",
+            "with_front": "1",
+            "rewrite_hierarchical": "0"
+        },
+        "query_var": "post_type_key",
+        "query_var_name": "",
+        "default_term": {
+            "default_term_enabled": "0"
+        },
+        "sort": 0,
+        "meta_box": "default",
+        "meta_box_cb": "",
+        "meta_box_sanitize_cb": ""
+    },
+    {
+        "key": "post_type_67ae146882c17",
+        "title": "RSS items",
+        "menu_order": 0,
+        "active": true,
+        "post_type": "rss-item",
+        "advanced_configuration": true,
+        "import_source": "",
+        "import_date": "",
+        "labels": {
+            "name": "RSS items",
+            "singular_name": "RSS item",
+            "menu_name": "RSS Items",
+            "all_items": "All RSS Items",
+            "edit_item": "Edit RSS item",
+            "view_item": "View RSS item",
+            "view_items": "View RSS Items",
+            "add_new_item": "Add New RSS item",
+            "add_new": "Add New RSS item",
+            "new_item": "New RSS item",
+            "parent_item_colon": "Parent RSS item:",
+            "search_items": "Search RSS Items",
+            "not_found": "No rss items found",
+            "not_found_in_trash": "No rss items found in Trash",
+            "archives": "RSS item Archives",
+            "attributes": "RSS item Attributes",
+            "featured_image": "",
+            "set_featured_image": "",
+            "remove_featured_image": "",
+            "use_featured_image": "",
+            "insert_into_item": "Insert into rss item",
+            "uploaded_to_this_item": "Uploaded to this rss item",
+            "filter_items_list": "Filter rss items list",
+            "filter_by_date": "Filter rss items by date",
+            "items_list_navigation": "RSS Items list navigation",
+            "items_list": "RSS Items list",
+            "item_published": "RSS item published.",
+            "item_published_privately": "RSS item published privately.",
+            "item_reverted_to_draft": "RSS item reverted to draft.",
+            "item_scheduled": "RSS item scheduled.",
+            "item_updated": "RSS item updated.",
+            "item_link": "RSS item Link",
+            "item_link_description": "A link to a rss item."
+        },
+        "description": "",
+        "public": true,
+        "hierarchical": false,
+        "exclude_from_search": true,
+        "publicly_queryable": true,
+        "show_ui": true,
+        "show_in_menu": true,
+        "admin_menu_parent": "",
+        "show_in_admin_bar": true,
+        "show_in_nav_menus": true,
+        "show_in_rest": true,
+        "rest_base": "",
+        "rest_namespace": "wp\/v2",
+        "rest_controller_class": "WP_REST_Posts_Controller",
+        "menu_position": "",
+        "menu_icon": {
+            "type": "dashicons",
+            "value": "dashicons-rss"
+        },
+        "rename_capabilities": false,
+        "singular_capability_name": "post",
+        "plural_capability_name": "posts",
+        "supports": [
+            "title",
+            "editor",
+            "thumbnail"
+        ],
+        "taxonomies": "",
+        "has_archive": false,
+        "has_archive_slug": "",
+        "rewrite": {
+            "permalink_rewrite": "post_type_key",
+            "with_front": "1",
+            "feeds": "0",
+            "pages": "1"
+        },
+        "query_var": "post_type_key",
+        "query_var_name": "",
+        "can_export": false,
+        "delete_with_user": false,
+        "register_meta_box_cb": "",
+        "enter_title_here": ""
+    },
+    {
+        "key": "ui_options_page_67ae11ec2d17e",
+        "title": "Press release feeds",
+        "active": true,
+        "menu_order": 0,
+        "page_title": "Press release feeds",
+        "menu_slug": "kntnt-rss-press-releases",
+        "parent_slug": "options-general.php",
+        "advanced_configuration": 1,
+        "icon_url": "",
+        "menu_title": "Press release feeds",
+        "position": "",
+        "redirect": false,
+        "description": "",
+        "menu_icon": [],
+        "update_button": "Update",
+        "updated_message": "Options Updated",
+        "capability": "edit_posts",
+        "data_storage": "options",
+        "post_id": "",
+        "autoload": 0
+    }
+]
