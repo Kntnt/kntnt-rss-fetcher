@@ -1,9 +1,9 @@
 <?php
 /**
  * Plugin Name:       Kntnt RSS Fetcher
- * Description:       Extends the Query Loop block with the ability to use a RSS feed as source.
- * Version:           0.0.4
- * Tags:              rss
+ * Description:       Fetches and displays content from multiple RSS feeds, with flexible configuration.
+ * Version:           0.1.0
+ * Tags:              rss, feed, aggregator, content
  * Plugin URI:        https://github.com/Kntnt/kntnt-rss-fetcher
  * Tested up to: 6.7
  * Requires at least: 6.7
@@ -49,6 +49,7 @@ final class Plugin {
 		add_action( 'acf/save_post', [ $this, 'save_options_page' ] );
 		add_filter( 'cron_schedules', [ $this, 'cron_schedule' ] );
 		add_action( 'kntnt_rss_fetch', [ $this, 'fetch_rss' ] );
+		add_action( 'admin_notices', [ $this, 'display_admin_notices' ] );
 
 		self::log( 'Plugin::__construct() - Exit' );
 	}
@@ -60,7 +61,7 @@ final class Plugin {
 		self::log( 'Plugin::activate() - Entry' );
 
 		if ( ! wp_next_scheduled( 'kntnt_rss_fetch' ) ) {
-			$interval = get_field( 'kntnt_rss_interval', 'option' );
+			$interval = $this->get_min_interval(); // Get shortest interval for initial schedule
 			$schedule = 'hourly'; // Default schedule if interval is not set or invalid
 			if ( $interval ) {
 				$schedule = 'kntnt_rss_interval';
@@ -91,8 +92,8 @@ final class Plugin {
 	public function save_options_page( $post_id ) {
 		self::log( 'Plugin::save_options_page() - Entry, post_id: %s', $post_id );
 
-		if ( ! isset( $_GET['page'] ) || $_GET['page'] !== 'kntnt-rss-press-releases' ) {
-			self::log( 'Plugin::save_options_page() - Not RSS options page, exiting.' );
+		if ( ! isset( $_GET['page'] ) || $_GET['page'] !== 'kntnt-rss-settings' ) {
+			self::log( 'Plugin::save_options_page() - Not RSS settings page, exiting.' );
 
 			return;
 		}
@@ -100,7 +101,8 @@ final class Plugin {
 		wp_clear_scheduled_hook( 'kntnt_rss_fetch' );
 		self::log( 'Plugin::save_options_page() - Cleared existing kntnt_rss_fetch cron schedule.' );
 		$this->fetch_rss(); // Run fetch immediately on save
-		$interval = get_field( 'kntnt_rss_interval', 'option' );
+
+		$interval = $this->get_min_interval(); // Recalculate interval after save
 		if ( $interval ) {
 			wp_schedule_event( time(), 'kntnt_rss_interval', 'kntnt_rss_fetch' );
 			self::log( 'Plugin::save_options_page() - Rescheduled kntnt_rss_fetch event with interval: %s minutes.', $interval );
@@ -117,7 +119,7 @@ final class Plugin {
 	public function cron_schedule( $schedules ) {
 		self::log( 'Plugin::cron_schedule() - Entry, current schedules: %s', $schedules );
 
-		$interval = get_field( 'kntnt_rss_interval', 'option' ); // Use ACF's get_field for option page
+		$interval = $this->get_min_interval();
 		if ( $interval ) {
 			$schedules['kntnt_rss_interval'] = [
 				'interval' => $interval * 60,
@@ -134,43 +136,112 @@ final class Plugin {
 	}
 
 	/**
+	 * Get the minimum poll interval from all feeds.
+	 */
+	private function get_min_interval() {
+		$min_interval = false;
+		if ( have_rows( 'kntnt_rss_feeds', 'option' ) ) {
+			while ( have_rows( 'kntnt_rss_feeds', 'option' ) ) : the_row();
+				$interval = get_sub_field( 'poll_interval' );
+				if ( $interval ) {
+					if ( ! $min_interval || $interval < $min_interval ) {
+						$min_interval = $interval;
+					}
+				}
+			endwhile;
+		}
+
+		return $min_interval;
+	}
+
+
+	/**
+	 * Display admin notices if there are errors.
+	 */
+	public function display_admin_notices() {
+		self::log( 'Plugin::display_admin_notices() - Entry' );
+
+		$notices = get_transient( 'kntnt_rss_fetcher_admin_notices' );
+
+		if ( $notices && ! empty( $notices ) ) {
+			foreach ( $notices as $notice ) {
+				?>
+                <div class="notice notice-error">
+                    <p><?php echo wp_kses_post( $notice ); ?></p>
+                </div>
+				<?php
+			}
+			delete_transient( 'kntnt_rss_fetcher_admin_notices' ); // Clear notices after displaying once
+			self::log( 'Plugin::display_admin_notices() - Displayed and cleared admin notices.' );
+		} else {
+			self::log( 'Plugin::display_admin_notices() - No admin notices to display.' );
+		}
+
+		self::log( 'Plugin::display_admin_notices() - Exit' );
+	}
+
+	/**
+	 * Helper function to add an admin notice to the transient.
+	 */
+	private function set_admin_notice( $message ) {
+		$notices = get_transient( 'kntnt_rss_fetcher_admin_notices' );
+		if ( ! is_array( $notices ) ) {
+			$notices = [];
+		}
+		$notices[] = $message;
+		set_transient( 'kntnt_rss_fetcher_admin_notices', $notices, 24 * HOUR_IN_SECONDS ); // Expire after 24 hours
+		self::log( 'Plugin::set_admin_notice() - Admin notice set: %s', $message );
+	}
+
+	/**
 	 * Fetch RSS feed items and create/update posts.
 	 */
 	public function fetch_rss() {
 		self::log( 'Plugin::fetch_rss() - Entry' );
 
-		$table     = $this->rss_id_table();
-		$author_id = get_field( 'kntnt_rss_author', 'option' );
-		$max_items = get_field( 'kntnt_rss_max_items', 'option' );
-
-		if ( ! $author_id ) {
-			self::log( 'Plugin::fetch_rss() - Error: Author not set in options.' );
-
-			return; // Stop if author is not set
+		$feeds = [];
+		if ( have_rows( 'kntnt_rss_feeds', 'option' ) ) {
+			while ( have_rows( 'kntnt_rss_feeds', 'option' ) ) : the_row();
+				$feed_config = [
+					'url'           => get_sub_field( 'url' ),
+					'author_id'     => get_sub_field( 'author' ),
+					'max_items'     => get_sub_field( 'max_items' ),
+					'poll_interval' => get_sub_field( 'poll_interval' ),
+					'tags'          => get_sub_field( 'tag' ), // Taxonomy terms
+				];
+				$feeds[]     = $feed_config;
+			endwhile;
 		}
 
-		if ( ! $max_items ) {
-			$max_items = 10; // Default max items if not set
-			self::log( 'Plugin::fetch_rss() - Max items not set, using default: %s', $max_items );
-		} else {
-			self::log( 'Plugin::fetch_rss() - Max items from options: %s', $max_items );
+		if ( empty( $feeds ) ) {
+			self::log( 'Plugin::fetch_rss() - No feeds configured.' );
+			$this->set_admin_notice( esc_html__( 'Kntnt RSS Fetcher: No RSS feeds configured. Please add feeds on the RSS Feeds settings page.', 'kntnt-rss-fetcher' ) );
+
+			return;
 		}
 
+		foreach ( $feeds as $feed_index => $feed_config ) {
+			$table     = $this->rss_id_table(); // Build hash table for each feed processing
+			$feed_url  = $feed_config['url'];
+			$author_id = $feed_config['author_id'];
+			$max_items = $feed_config['max_items'];
+			$feed_tags = $feed_config['tags']; // Get taxonomy term IDs
 
-		$feeds = [
-			'regulatory'     => get_field( 'kntnt_rss_regulatory_press_releases', 'option' ),
-			'non-regulatory' => get_field( 'kntnt_rss_non_regulatory_press_releases', 'option' ),
-		];
-
-		self::log( 'Plugin::fetch_rss() - Processing feeds: %s', array_keys( $feeds ) );
-
-		foreach ( $feeds as $type => $feed_url ) {
-			if ( empty( $feed_url ) ) {
-				self::log( 'Plugin::fetch_rss() - Feed URL for %s is empty. Skipping.', $type );
-				continue; // Skip if feed URL is empty
+			if ( ! $author_id ) {
+				self::log( 'Plugin::fetch_rss() - Error: Author not set for feed URL: %s. Skipping feed.', $feed_url );
+				$this->set_admin_notice( sprintf( esc_html__( 'Kntnt RSS Fetcher: Author not set for feed URL: %s. Please check the RSS Feeds settings page.', 'kntnt-rss-fetcher' ), esc_url( $feed_url ) ) );
+				continue; // Skip to the next feed if author is not set
 			}
 
-			self::log( 'Plugin::fetch_rss() - Fetching feed from URL: %s (type: %s)', $feed_url, $type );
+			if ( ! $max_items ) {
+				$max_items = 10; // Default max items if not set
+				self::log( 'Plugin::fetch_rss() - Max items not set for feed URL: %s, using default: %s', $feed_url, $max_items );
+			} else {
+				self::log( 'Plugin::fetch_rss() - Max items from options for feed URL: %s: %s', $feed_url, $max_items );
+			}
+
+
+			self::log( 'Plugin::fetch_rss() - Fetching feed from URL: %s (feed index: %s)', $feed_url, $feed_index );
 			$feed = fetch_feed( $feed_url );
 
 			if ( is_wp_error( $feed ) ) {
@@ -178,8 +249,12 @@ final class Plugin {
 				$http_code     = wp_remote_retrieve_response_code( $feed ); // Försök hämta HTTP-statuskod
 				$log_message   = 'WP_Error fetching feed: ' . $error_message . ' for URL: ' . $feed_url;
 				if ( $http_code ) {
-					$log_message .= ' (HTTP Status Code: ' . $http_code . ')';
+					$log_message    .= ' (HTTP Status Code: ' . $http_code . ')';
+					$notice_message = sprintf( esc_html__( 'Kntnt RSS Fetcher: Error fetching RSS feed from URL: %1$s.  HTTP Status Code: %2$s. Error message: %3$s', 'kntnt-rss-fetcher' ), esc_url( $feed_url ), esc_html( $http_code ), esc_html( $error_message ) );
+				} else {
+					$notice_message = sprintf( esc_html__( 'Kntnt RSS Fetcher: Error fetching RSS feed from URL: %1$s. Error message: %2$s', 'kntnt-rss-fetcher' ), esc_url( $feed_url ), esc_html( $error_message ) );
 				}
+				$this->set_admin_notice( $notice_message );
 				self::log( 'Plugin::fetch_rss() - %s', $log_message );
 				continue; // Skip to the next feed if there's an error
 			}
@@ -188,6 +263,7 @@ final class Plugin {
 
 			if ( empty( $feed_items ) ) {
 				self::log( 'Plugin::fetch_rss() - No items found in feed URL: %s', $feed_url );
+				$this->set_admin_notice( sprintf( esc_html__( 'Kntnt RSS Fetcher: No items found in RSS feed URL: %s', 'kntnt-rss-fetcher' ), esc_url( $feed_url ) ) );
 				continue; // Skip to the next feed if no items
 			}
 
@@ -284,7 +360,7 @@ final class Plugin {
 
 
 				$post_data = [
-					'post_type'    => 'rss-item',
+					'post_type'    => 'kntnt-rss-item', // Updated post type
 					'post_title'   => $post_title,
 					'post_date'    => $post_date,
 					'post_excerpt' => $post_excerpt,
@@ -293,22 +369,21 @@ final class Plugin {
 					'author'       => $author_id,
 				];
 
-				self::log( 'Plugin::fetch_rss() - Inserting post with data: %s', $post_data );
 				$post_id = wp_insert_post( $post_data );
 
 				if ( is_wp_error( $post_id ) ) {
 					self::log( 'Plugin::fetch_rss() - WP_Error inserting post: %s for item ID: %s', $post_id->get_error_message(), $item_id );
 					continue; // Skip to the next item if post creation fails
 				}
-				self::log( 'Plugin::fetch_rss() - Post inserted successfully, post ID: %s, item ID: %s', $post_id, $item_id );
 
 				update_post_meta( $post_id, 'kntnt_rss_item_id', $item_id );
-				update_post_meta( $post_id, 'kntnt_rss_link', esc_url_raw( $post_link ) );
+				update_post_meta( $post_id, 'kntnt_rss_item_link', esc_url_raw( $post_link ) ); // Updated meta field name
 
-				// Set taxonomy term
-				$term = ( $type === 'regulatory' ) ? 'regulatory' : 'non-regulatory';
-				wp_set_object_terms( $post_id, $term, 'rss-item-type' );
-				self::log( 'Plugin::fetch_rss() - Taxonomy term set: %s for post ID: %s', $term, $post_id );
+				// Set taxonomy terms (using feed_tags from repeater config)
+				if ( ! empty( $feed_tags ) && is_array( $feed_tags ) ) {
+					wp_set_object_terms( $post_id, $feed_tags, 'kntnt-rss-tag' ); // Updated taxonomy name
+					self::log( 'Plugin::fetch_rss() - Taxonomy terms set: %s for post ID: %s', implode( ',', $feed_tags ), $post_id );
+				}
 
 
 				if ( $thumbnail_url ) {
@@ -319,6 +394,7 @@ final class Plugin {
 						self::log( 'Plugin::fetch_rss() - Thumbnail set successfully, thumbnail ID: %s for post ID: %s', $thumbnail_id, $post_id );
 					} elseif ( is_wp_error( $thumbnail_id ) ) {
 						self::log( 'Plugin::fetch_rss() - WP_Error uploading thumbnail: %s for post ID: %s', $thumbnail_id->get_error_message(), $post_id );
+						$this->set_admin_notice( sprintf( esc_html__( 'Kntnt RSS Fetcher: Error uploading thumbnail from URL: %1$s for item: %2$s. Error message: %3$s', 'kntnt-rss-fetcher' ), esc_url( $thumbnail_url ), esc_html( $item->get_title() ), esc_html( $thumbnail_id->get_error_message() ) ) );
 					}
 				}
 
@@ -327,7 +403,7 @@ final class Plugin {
 		}
 
 		// Prune old posts if exceeding max items (based on the total number of items in the table, not just newly added)
-		if ( count( $table ) > $max_items ) {
+		if ( count( $table ) > $max_items ) { // Use the LAST feed's max_items for pruning - consider if this should be the SUM or MAX of all feeds max_items in future versions.
 			self::log( 'Plugin::fetch_rss() - Pruning posts. Current item count: %s, max items: %s', count( $table ), $max_items );
 			asort( $table, SORT_NUMERIC ); // Sort by post ID (creation order)
 			$prune_ids = array_slice( $table, 0, count( $table ) - $max_items );
@@ -352,13 +428,13 @@ final class Plugin {
 		self::log( 'Plugin::rss_id_table() - Entry' );
 
 		$args         = [
-			'post_type'      => 'rss-item',
+			'post_type'      => 'kntnt-rss-item', // Updated post type
 			'posts_per_page' => - 1,
 			'fields'         => 'ids', // Fetch only post IDs for performance
 			'meta_key'       => 'kntnt_rss_item_id',
 		];
 		$rss_post_ids = get_posts( $args );
-		self::log( 'Plugin::rss_id_table() - Fetched %s post IDs for rss-item post type.', count( $rss_post_ids ) );
+		self::log( 'Plugin::rss_id_table() - Fetched %s post IDs for kntnt-rss-item post type.', count( $rss_post_ids ) );
 
 		$hash = [];
 		foreach ( $rss_post_ids as $post_id ) {
