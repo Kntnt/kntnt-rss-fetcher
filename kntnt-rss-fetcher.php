@@ -65,6 +65,7 @@ final class Plugin {
 		add_action( 'acf/save_post', [ $this, 'save_options_page' ] );
 		add_filter( 'cron_schedules', [ $this, 'cron_schedule' ] );
 		add_action( 'kntnt_rss_fetch', [ $this, 'fetch_rss' ] );
+		add_action( 'trashed_post', [ $this, 'skip_trash' ] );
 
 		self::log( Level::INFO, 'Hooks registered' );
 
@@ -785,6 +786,19 @@ final class Plugin {
 		}
 		self::log( Level::INFO, 'Poll interval is %s minutes.', $min_interval / 60 );
 		return $min_interval;
+	}
+
+	/**
+	 * Skip trash for RSS items.
+	 *
+	 * @param int $post_id Post id
+	 *
+	 * @return void
+	 */
+	public function skip_trash( int $post_id ): void {
+		if ( 'kntnt-rss-item' === get_post_type( $post_id ) ) {
+			wp_delete_post( $post_id, true );
+		}
 	}
 
 }
