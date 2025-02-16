@@ -447,6 +447,7 @@ final class Plugin {
 		elseif ( ! $post_excerpt && ! $post_content ) {
 			self::log( Level::WARNING, 'No description or content found.' );
 		}
+		$post_excerpt = wp_strip_all_tags( $post_excerpt, true ); // Remove any HTML
 
 		$post_title = $item->get_title();
 		if ( ! $post_title ) {
