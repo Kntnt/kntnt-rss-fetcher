@@ -567,6 +567,7 @@ final class Plugin {
 	private function create_post( array $item_data, int $author_id ): int {
 
 		$post_data = [
+			'post_type' => 'kntnt-rss-item',
 			'post_title' => $item_data['post_title'],
 			'post_date' => $item_data['post_date'],
 			'post_excerpt' => $item_data['post_excerpt'],
