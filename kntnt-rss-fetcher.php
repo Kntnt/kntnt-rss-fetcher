@@ -572,7 +572,7 @@ final class Plugin {
 			'post_date' => $item_data['post_date'],
 			'post_excerpt' => $item_data['post_excerpt'],
 			'post_content' => $item_data['post_content'],
-			'post_status' => 'published',
+			'post_status' => 'publish',
 			'post_author' => $author_id,
 		];
 
