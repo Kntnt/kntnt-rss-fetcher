@@ -66,6 +66,7 @@ final class Plugin {
 		add_filter( 'cron_schedules', [ $this, 'cron_schedule' ] );
 		add_action( 'kntnt_rss_fetch', [ $this, 'fetch_rss' ] );
 		add_action( 'trashed_post', [ $this, 'skip_trash' ] );
+		add_action( 'delete_post', [ $this, 'delete_image_with_post' ] );
 
 		self::log( Level::INFO, 'Hooks registered' );
 
@@ -799,6 +800,34 @@ final class Plugin {
 		if ( 'kntnt-rss-item' === get_post_type( $post_id ) ) {
 			wp_delete_post( $post_id, true );
 		}
+	}
+
+	/**
+	 * Raderar utvald bild och dess varianter när en kntnt-rss-item post raderas.
+	 *
+	 * @param int $post_id ID för posten som raderas.
+	 *
+	 * @return void
+	 */
+	public function delete_image_with_post( int $post_id ): void {
+
+		if ( 'kntnt-rss-item' !== get_post_type( $post_id ) ) {
+			return;
+		}
+
+		if ( $thumbnail_id = get_post_thumbnail_id( $post_id ) ) {
+			$deleted = wp_delete_attachment( $thumbnail_id, true );
+			if ( $deleted ) {
+				self::log( Level::DEBUG, 'Succeed to deleted featured image (attachment ID: %s) for post ID: %s', $thumbnail_id, $post_id );
+			}
+			else {
+				self::log( Level::DEBUG, 'Failed to deleted featured image (attachment ID: %s) for post ID: %s', $thumbnail_id, $post_id );
+			}
+		}
+		else {
+			self::log( Level::DEBUG, 'No featured image to be deleted for record ID: %s', $post_id );
+		}
+
 	}
 
 }
