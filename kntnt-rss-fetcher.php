@@ -1,5 +1,6 @@
 <?php
 /**
+ * @package Kntnt\RSSFetcher
  * Plugin Name:       Kntnt RSS Fetcher
  * Description:       Fetches and displays content from multiple RSS feeds, with flexible configuration.
  * Version:           0.1.2
@@ -17,9 +18,9 @@
 
 namespace Kntnt\RSSFetcher;
 
-use SimplePie\Item;
+defined( 'WPINC' ) || exit;
 
-defined( 'WPINC' ) && new Plugin;
+use SimplePie\Item;
 
 enum Level: int {
 
@@ -284,7 +285,12 @@ final class Plugin {
 				if ( $post_id = $this->create_post( $item_data, $author_id ) ) {
 					$this->add_metadata_to_post( $post_id, $item_id, $item_data['item_link'], $url );
 					$this->add_tags_to_post( $post_id, $tags );
-					$this->add_thumbnail_to_post( $post_id, $item_data['thumbnail_url'] );
+					if ( isset( $item_data['thumbnail_url'] ) ) {
+						$this->add_thumbnail_to_post( $post_id, $item_data['thumbnail_url'] );
+					}
+					else {
+						self::log( Level::DEBUG, 'No image found' );
+					}
 				}
 
 				$rss_id_table[ $item_id ] = $post_id;
@@ -649,16 +655,14 @@ final class Plugin {
 	 * @return void
 	 */
 	private function add_thumbnail_to_post( int $post_id, string $thumbnail_url ): void {
-		if ( $thumbnail_url ) {
-			self::log( Level::DEBUG, 'Uploading thumbnail from %s to post ID: %s', $thumbnail_url, $post_id );
-			$thumbnail_id = $this->upload_image( $thumbnail_url, $post_id );
-			if ( $thumbnail_id && ! is_wp_error( $thumbnail_id ) ) {
-				if ( set_post_thumbnail( $post_id, $thumbnail_id ) ) {
-					self::log( Level::DEBUG, 'Thumbnail set successfully, thumbnail ID: %s for post ID: %s', $thumbnail_id, $post_id );
-				}
-				else {
-					self::log( Level::ERROR, 'Could not update post %s with thumbnail ID: %s', $post_id, $thumbnail_id );
-				}
+		self::log( Level::DEBUG, 'Uploading thumbnail from %s to post ID: %s', $thumbnail_url, $post_id );
+		$thumbnail_id = $this->upload_image( $thumbnail_url, $post_id );
+		if ( $thumbnail_id && ! is_wp_error( $thumbnail_id ) ) {
+			if ( set_post_thumbnail( $post_id, $thumbnail_id ) ) {
+				self::log( Level::DEBUG, 'Thumbnail set successfully, thumbnail ID: %s for post ID: %s', $thumbnail_id, $post_id );
+			}
+			else {
+				self::log( Level::ERROR, 'Could not update post %s with thumbnail ID: %s', $post_id, $thumbnail_id );
 			}
 		}
 	}
@@ -779,3 +783,5 @@ final class Plugin {
 	}
 
 }
+
+new Plugin;
