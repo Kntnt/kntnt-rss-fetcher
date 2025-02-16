@@ -66,62 +66,11 @@ final class Plugin {
 		add_action( 'acf/save_post', [ $this, 'save_options_page' ] );
 		add_filter( 'cron_schedules', [ $this, 'cron_schedule' ] );
 		add_action( 'kntnt_rss_fetch', [ $this, 'fetch_rss' ] );
+		add_action( 'pre_get_posts', [ $this, 'hide_rss_images' ] );
 		add_action( 'trashed_post', [ $this, 'skip_trash' ] );
 		add_action( 'delete_post', [ $this, 'delete_image_with_post' ] );
 
 		self::log( Level::INFO, 'Hooks registered' );
-
-	}
-
-	/**
-	 * If `$message` isn't a string, its value is printed. If `$message` is
-	 * a string, it is written with each occurrence of '%s' replaced with
-	 * the value of the corresponding additional argument converted to string.
-	 * Any percent sign that should be written must be escaped with another
-	 * percent sign, that is `%%`.
-	 *
-	 * @param Level $level   Log level
-	 * @param mixed $message [Optional] String with %s where to print remaining arguments, or a single scalar, array, or object.
-	 * @param       ...$args [Optional] Scalars, arrays, and objects to replace %s in message with
-	 *
-	 * @return void
-	 */
-	private static function log( Level $level, mixed $message = '', ...$args ): void {
-
-		// Skip if debugging is disabled
-		if ( ! defined( 'WP_DEBUG' ) || ! constant( 'WP_DEBUG' ) ) {
-			return;
-		}
-
-		// Skip if either:
-		// - it's not an ERROR message and KNTNT_RSS_FETCHER_DEBUG is not defined
-		// - message level is higher than KNTNT_RSS_FETCHER_DEBUG
-		if ( $level !== Level::ERROR && ( ! defined( 'KNTNT_RSS_FETCHER_DEBUG' ) || $level > constant( 'KNTNT_RSS_FETCHER_DEBUG' ) ) ) {
-			return;
-		}
-
-		// Handle the case no message is given, but just
-		if ( ! is_string( $message ) ) {
-			if ( is_scalar( $message ) ) {
-				$args = [ $message ];
-			}
-			$message = '%s';
-		}
-
-		// Stringify the arguments
-		foreach ( $args as &$arg ) {
-			if ( is_array( $arg ) || is_object( $arg ) ) {
-				$arg = print_r( $arg, true );
-			}
-		}
-
-		// Get the caller path
-		$caller = debug_backtrace( DEBUG_BACKTRACE_IGNORE_ARGS, 2 );
-		$caller = $caller[1]['class'] . '->' . $caller[1]['function'] . '()';
-
-		// Output the log message
-		$message = sprintf( $message, ...$args );
-		error_log( "$caller: $message" );
 
 	}
 
@@ -140,39 +89,6 @@ final class Plugin {
 		$this->schedule_cron();
 
 		self::log( Level::INFO, "Activated" );
-
-	}
-
-	/**
-	 *  Clear this plugin's cron schedule.
-	 *
-	 * @return void
-	 */
-	private function deschedule_cron(): void {
-		wp_clear_scheduled_hook( 'kntnt_rss_fetch' );
-		self::log( Level::INFO, 'Cleared kntnt_rss_fetch cron schedule.' );
-	}
-
-	/**
-	 *  Add plugin's cron schedule.
-	 *
-	 * @return void
-	 */
-	private function schedule_cron(): void {
-
-		$scheduled = wp_schedule_event( time(), 'kntnt_rss_interval', 'kntnt_rss_fetch' );
-
-		if ( $scheduled ) {
-			self::log( Level::INFO, 'Scheduled kntnt_rss_fetch as a recurring event.' );
-			return;
-		}
-
-		if ( is_wp_error( $scheduled ) ) {
-			self::log( Level::ERROR, sprintf( 'Failed to schedule kntnt_rss_fetch: %s', $scheduled->get_error_message() ) );
-		}
-		else {
-			self::log( Level::ERROR, 'Failed to schedule kntnt_rss_fetch event' );
-		}
 
 	}
 
@@ -228,55 +144,23 @@ final class Plugin {
 	}
 
 	/**
-	 * Action to run when the options page is saved.
+	 * Adds a custom cron schedule for RSS polling.
 	 *
-	 * @return void
+	 * Adds the schedule 'kntnt_rss_interval' to WordPress cron schedules.
+	 * The interval is determined by the shortest poll interval among all feeds.
+	 *
+	 * @param array $schedules Array of existing cron schedules.
+	 *
+	 * @return array Modified array of cron schedules with kntnt_rss_interval added.
 	 */
-	public function save_options_page(): void {
-
-		if ( ! isset( $_GET['page'] ) || $_GET['page'] !== 'kntnt-rss-settings' ) {
-			return;
-		}
-
-		$this->set_default_author();
-		$this->reschedule_cron();
-
-	}
-
-	/**
-	 * Sets current user as default author for feeds missing an author.
-	 *
-	 * Iterates through the ACF repeater field 'kntnt_rss_feeds' and sets
-	 * the current user's ID as author for any feed where no author is set.
-	 *
-	 * @return void
-	 */
-	private function set_default_author(): void {
-		while ( have_rows( 'kntnt_rss_feeds', 'option' ) ) {
-			the_row();
-			if ( empty( get_sub_field( 'author' ) ) ) {
-				update_sub_field( 'author', get_current_user_id() );
-			}
-		}
-	}
-
-	/**
-	 * Reschedules the RSS feed fetching cron job.
-	 *
-	 * Removes existing cron schedule, executes an immediate feed fetch,
-	 * and schedules the next cron run. This ensures feeds are current
-	 * after any configuration changes.
-	 *
-	 * @return void
-	 */
-	private function reschedule_cron(): void {
-
-		$this->deschedule_cron();
-		$this->fetch_rss();
-		$this->schedule_cron();
-
-		self::log( Level::INFO, 'Fetched all RSS feeds and rescheduled future fetches.' );
-
+	public function cron_schedule( array $schedules ): array {
+		$interval = $this->get_min_interval();
+		$schedules['kntnt_rss_interval'] = [
+			'interval' => $interval,
+			'display' => 'Kntnt RSS Fetcher Poll Interval',
+		];
+		self::log( Level::DEBUG, 'Added poll interval schedule kntnt_rss_interval: %s minutes', $interval );
+		return $schedules;
 	}
 
 	/**
@@ -348,6 +232,223 @@ final class Plugin {
 
 		}
 
+	}
+
+	/**
+	 * Action to run when the options page is saved.
+	 *
+	 * @return void
+	 */
+	public function save_options_page(): void {
+
+		if ( ! isset( $_GET['page'] ) || $_GET['page'] !== 'kntnt-rss-settings' ) {
+			return;
+		}
+
+		$this->set_default_author();
+		$this->reschedule_cron();
+
+	}
+
+	/**
+	 * Filters the WordPress attachment query to hide attachments with
+	 * the '_kntnt_rss_item_post_id' meta key in the admin area.
+	 *
+	 * This function is hooked to the 'pre_get_posts' action and modifies the
+	 * query object to exclude attachments that have the meta key
+	 * '_kntnt_rss_item_post_id'. This effectively hides these specific
+	 * attachments from being displayed in the Media Library, block editor,
+	 * and other admin areas where attachments are queried.
+	 *
+	 * @param WP_Query $query The WP_Query instance (passed by reference).
+	 *                        It is modified in place to filter attachments.
+	 *
+	 * @return void
+	 */
+	public function hide_rss_images( $query ): void {
+		if ( is_admin() && $query->get( 'post_type' ) === 'attachment' ) {
+			$meta_query = [
+				[
+					'key' => '_kntnt_rss_item_post_id',
+					'compare' => 'NOT EXISTS',
+				],
+			];
+			$query->set( 'meta_query', $meta_query );
+		}
+	}
+
+	/**
+	 * Skip trash for RSS items.
+	 *
+	 * @param int $post_id Post id
+	 *
+	 * @return void
+	 */
+	public function skip_trash( int $post_id ): void {
+		if ( 'kntnt-rss-item' === get_post_type( $post_id ) ) {
+			wp_delete_post( $post_id, true );
+		}
+	}
+
+	/**
+	 * Raderar utvald bild och dess varianter när en kntnt-rss-item post raderas.
+	 *
+	 * @param int $post_id ID för posten som raderas.
+	 *
+	 * @return void
+	 */
+	public function delete_image_with_post( int $post_id ): void {
+
+		if ( 'kntnt-rss-item' !== get_post_type( $post_id ) ) {
+			return;
+		}
+
+		if ( $thumbnail_id = get_post_thumbnail_id( $post_id ) ) {
+			$deleted = wp_delete_attachment( $thumbnail_id, true );
+			if ( $deleted ) {
+				self::log( Level::DEBUG, 'Succeed to deleted featured image (attachment ID: %s) for post ID: %s', $thumbnail_id, $post_id );
+			}
+			else {
+				self::log( Level::DEBUG, 'Failed to deleted featured image (attachment ID: %s) for post ID: %s', $thumbnail_id, $post_id );
+			}
+		}
+		else {
+			self::log( Level::DEBUG, 'No featured image to be deleted for record ID: %s', $post_id );
+		}
+
+	}
+
+	/**
+	 * If `$message` isn't a string, its value is printed. If `$message` is
+	 * a string, it is written with each occurrence of '%s' replaced with
+	 * the value of the corresponding additional argument converted to string.
+	 * Any percent sign that should be written must be escaped with another
+	 * percent sign, that is `%%`.
+	 *
+	 * @param Level $level   Log level
+	 * @param mixed $message [Optional] String with %s where to print remaining arguments, or a single scalar, array, or object.
+	 * @param       ...$args [Optional] Scalars, arrays, and objects to replace %s in message with
+	 *
+	 * @return void
+	 */
+	private static function log( Level $level, mixed $message = '', ...$args ): void {
+
+		// Skip if debugging is disabled
+		if ( ! defined( 'WP_DEBUG' ) || ! constant( 'WP_DEBUG' ) ) {
+			return;
+		}
+
+		// Skip if either:
+		// - it's not an ERROR message and KNTNT_RSS_FETCHER_DEBUG is not defined
+		// - message level is higher than KNTNT_RSS_FETCHER_DEBUG
+		if ( $level !== Level::ERROR && ( ! defined( 'KNTNT_RSS_FETCHER_DEBUG' ) || $level > constant( 'KNTNT_RSS_FETCHER_DEBUG' ) ) ) {
+			return;
+		}
+
+		// Handle the case no message is given, but just
+		if ( ! is_string( $message ) ) {
+			if ( is_scalar( $message ) ) {
+				$args = [ $message ];
+			}
+			$message = '%s';
+		}
+
+		// Stringify the arguments
+		foreach ( $args as &$arg ) {
+			if ( is_array( $arg ) || is_object( $arg ) ) {
+				$arg = print_r( $arg, true );
+			}
+		}
+
+		// Get the caller path
+		$caller = debug_backtrace( DEBUG_BACKTRACE_IGNORE_ARGS, 2 );
+		$caller = $caller[1]['class'] . '->' . $caller[1]['function'] . '()';
+
+		// Output the log message
+		$message = sprintf( $message, ...$args );
+		error_log( "$caller: $message" );
+
+	}
+
+	/**
+	 * Reschedules the RSS feed fetching cron job.
+	 *
+	 * Removes existing cron schedule, executes an immediate feed fetch,
+	 * and schedules the next cron run. This ensures feeds are current
+	 * after any configuration changes.
+	 *
+	 * @return void
+	 */
+	private function reschedule_cron(): void {
+
+		$this->deschedule_cron();
+		$this->fetch_rss();
+		$this->schedule_cron();
+
+		self::log( Level::INFO, 'Fetched all RSS feeds and rescheduled future fetches.' );
+
+	}
+
+	/**
+	 *  Add plugin's cron schedule.
+	 *
+	 * @return void
+	 */
+	private function schedule_cron(): void {
+
+		$scheduled = wp_schedule_event( time(), 'kntnt_rss_interval', 'kntnt_rss_fetch' );
+
+		if ( $scheduled ) {
+			self::log( Level::INFO, 'Scheduled kntnt_rss_fetch as a recurring event.' );
+			return;
+		}
+
+		if ( is_wp_error( $scheduled ) ) {
+			self::log( Level::ERROR, sprintf( 'Failed to schedule kntnt_rss_fetch: %s', $scheduled->get_error_message() ) );
+		}
+		else {
+			self::log( Level::ERROR, 'Failed to schedule kntnt_rss_fetch event' );
+		}
+
+	}
+
+	/**
+	 *  Clear this plugin's cron schedule.
+	 *
+	 * @return void
+	 */
+	private function deschedule_cron(): void {
+		wp_clear_scheduled_hook( 'kntnt_rss_fetch' );
+		self::log( Level::INFO, 'Cleared kntnt_rss_fetch cron schedule.' );
+	}
+
+	/**
+	 * Gets the shortest poll interval among all configured feeds.
+	 *
+	 * Reads poll_interval from ACF repeater field 'kntnt_rss_feeds' and returns
+	 * the minimum interval in seconds. If no interval is configured, defaults to
+	 * HOUR_IN_SECONDS (3600 seconds).
+	 *
+	 * @return int Minimum poll interval in seconds.
+	 */
+	private function get_min_interval(): int {
+		$min_interval = null;
+		while ( have_rows( 'kntnt_rss_feeds', 'option' ) ) {
+			the_row();
+			$interval = (int) get_sub_field( 'poll_interval' ) * 60; // In seconds
+			self::log( Level::DEBUG, 'Poll interval of %s: %s minutes', get_sub_field( 'url' ), $interval );
+			if ( $interval ) {
+				if ( ! $min_interval || $interval < $min_interval ) {
+					$min_interval = $interval;
+				}
+			}
+		}
+		if ( ! $min_interval ) {
+			self::log( Level::WARNING, 'No poll interval found. Defaults to hourly.' );
+			$min_interval = HOUR_IN_SECONDS;
+		}
+		self::log( Level::INFO, 'Poll interval is %s minutes.', $min_interval / 60 );
+		return $min_interval;
 	}
 
 	/**
@@ -533,25 +634,6 @@ final class Plugin {
 	}
 
 	/**
-	 * Truncates a long text to create a title, ensuring it doesn't exceed 50 characters,
-	 * breaking only at word boundaries. If truncated, adds an ellipsis to the end.
-	 *
-	 * @param string $title Text to be truncated into a title.
-	 *
-	 * @return string Truncated text with ellipsis if shortened, original text if under limit.
-	 */
-	private function generate_title_from_description( string $title ): string {
-		if ( strlen( $title ) > 50 ) {
-			$words = explode( ' ', $title );
-			while ( strlen( $title = implode( ' ', $words ) ) > 50 ) {
-				array_pop( $words );
-			}
-			$title = "{$title}…";
-		}
-		return $title;
-	}
-
-	/**
 	 * Extracts an image URL from a feed item, checking multiple potential sources.
 	 *
 	 * Checks sources in this order:
@@ -587,6 +669,25 @@ final class Plugin {
 
 		return null;
 
+	}
+
+	/**
+	 * Truncates a long text to create a title, ensuring it doesn't exceed 50 characters,
+	 * breaking only at word boundaries. If truncated, adds an ellipsis to the end.
+	 *
+	 * @param string $title Text to be truncated into a title.
+	 *
+	 * @return string Truncated text with ellipsis if shortened, original text if under limit.
+	 */
+	private function generate_title_from_description( string $title ): string {
+		if ( strlen( $title ) > 50 ) {
+			$words = explode( ' ', $title );
+			while ( strlen( $title = implode( ' ', $words ) ) > 50 ) {
+				array_pop( $words );
+			}
+			$title = "{$title}…";
+		}
+		return $title;
 	}
 
 	/**
@@ -751,6 +852,7 @@ final class Plugin {
 			self::log( Level::ERROR, 'Media sideloading failed: %s', $attachment_id->get_error_message() );
 			return false;
 		}
+		update_post_meta( $attachment_id, '_kntnt_rss_item_post_id', $post_id ); // Necessary to hide image in UI
 		self::log( Level::INFO, 'Media sideloaded successfully, attachment ID: %s', $attachment_id );
 
 		return $attachment_id;
@@ -783,97 +885,22 @@ final class Plugin {
 	}
 
 	/**
-	 * Adds a custom cron schedule for RSS polling.
+	 * Sets current user as default author for feeds missing an author.
 	 *
-	 * Adds the schedule 'kntnt_rss_interval' to WordPress cron schedules.
-	 * The interval is determined by the shortest poll interval among all feeds.
+	 * Iterates through the ACF repeater field 'kntnt_rss_feeds' and sets
+	 * the current user's ID as author for any feed where no author is set.
 	 *
-	 * @param array $schedules Array of existing cron schedules.
-	 *
-	 * @return array Modified array of cron schedules with kntnt_rss_interval added.
+	 * @return void
 	 */
-	public function cron_schedule( array $schedules ): array {
-		$interval = $this->get_min_interval();
-		$schedules['kntnt_rss_interval'] = [
-			'interval' => $interval,
-			'display' => 'Kntnt RSS Fetcher Poll Interval',
-		];
-		self::log( Level::DEBUG, 'Added poll interval schedule kntnt_rss_interval: %s minutes', $interval );
-		return $schedules;
-	}
-
-	/**
-	 * Gets the shortest poll interval among all configured feeds.
-	 *
-	 * Reads poll_interval from ACF repeater field 'kntnt_rss_feeds' and returns
-	 * the minimum interval in seconds. If no interval is configured, defaults to
-	 * HOUR_IN_SECONDS (3600 seconds).
-	 *
-	 * @return int Minimum poll interval in seconds.
-	 */
-	private function get_min_interval(): int {
-		$min_interval = null;
+	private function set_default_author(): void {
 		while ( have_rows( 'kntnt_rss_feeds', 'option' ) ) {
 			the_row();
-			$interval = (int) get_sub_field( 'poll_interval' ) * 60; // In seconds
-			self::log( Level::DEBUG, 'Poll interval of %s: %s minutes', get_sub_field( 'url' ), $interval );
-			if ( $interval ) {
-				if ( ! $min_interval || $interval < $min_interval ) {
-					$min_interval = $interval;
-				}
+			if ( empty( get_sub_field( 'author' ) ) ) {
+				update_sub_field( 'author', get_current_user_id() );
 			}
 		}
-		if ( ! $min_interval ) {
-			self::log( Level::WARNING, 'No poll interval found. Defaults to hourly.' );
-			$min_interval = HOUR_IN_SECONDS;
-		}
-		self::log( Level::INFO, 'Poll interval is %s minutes.', $min_interval / 60 );
-		return $min_interval;
-	}
-
-	/**
-	 * Skip trash for RSS items.
-	 *
-	 * @param int $post_id Post id
-	 *
-	 * @return void
-	 */
-	public function skip_trash( int $post_id ): void {
-		if ( 'kntnt-rss-item' === get_post_type( $post_id ) ) {
-			wp_delete_post( $post_id, true );
-		}
-	}
-
-	/**
-	 * Raderar utvald bild och dess varianter när en kntnt-rss-item post raderas.
-	 *
-	 * @param int $post_id ID för posten som raderas.
-	 *
-	 * @return void
-	 */
-	public function delete_image_with_post( int $post_id ): void {
-
-		if ( 'kntnt-rss-item' !== get_post_type( $post_id ) ) {
-			return;
-		}
-
-		if ( $thumbnail_id = get_post_thumbnail_id( $post_id ) ) {
-			$deleted = wp_delete_attachment( $thumbnail_id, true );
-			if ( $deleted ) {
-				self::log( Level::DEBUG, 'Succeed to deleted featured image (attachment ID: %s) for post ID: %s', $thumbnail_id, $post_id );
-			}
-			else {
-				self::log( Level::DEBUG, 'Failed to deleted featured image (attachment ID: %s) for post ID: %s', $thumbnail_id, $post_id );
-			}
-		}
-		else {
-			self::log( Level::DEBUG, 'No featured image to be deleted for record ID: %s', $post_id );
-		}
-
 	}
 
 }
 
-add_action( 'plugins_loaded', function () { // TODO: Necessary?
-	new Plugin;
-} );
+new Plugin;
