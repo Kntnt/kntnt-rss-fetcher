@@ -449,7 +449,7 @@ final class Plugin {
 		}
 
 		$post_title = $item->get_title();
-		if ( ! $post_excerpt ) {
+		if ( ! $post_title ) {
 			self::log( Level::WARNING, 'No title found.' );
 		}
 		else {
