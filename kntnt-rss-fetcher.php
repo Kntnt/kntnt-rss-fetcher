@@ -17,10 +17,43 @@
 
 namespace Kntnt\RSSFetcher;
 
-defined( 'ABSPATH' ) && new Plugin;
+defined( 'WPINC' ) && new Plugin;
+
+enum Level: int {
+
+	/**
+	 * Define KNTNT_RSS_FETCHER_DEBUG as Kntnt\RSSFetcher\ERROR to allow
+	 * error messages but nothing more to be logged if WP_DEBUG is true.
+	 */
+	case ERROR = 0;
+
+	/**
+	 * Define KNTNT_RSS_FETCHER_DEBUG as Kntnt\RSSFetcher\WARNING to allow
+	 * warning messages and error messages but nothing more to be logged
+	 * if WP_DEBUG is true.
+	 */
+	case WARNING = 1;
+
+	/**
+	 * Define KNTNT_RSS_FETCHER_DEBUG to Kntnt\RSSFetcher\ERROR to allow
+	 * info messages, warning messages and error messages but nothing more
+	 * to be logged if WP_DEBUG is true.
+	 */
+	case INFO = 2;
+
+	/**
+	 * Set Define KNTNT_RSS_FETCHER_DEBUG to Kntnt\RSSFetcher\DEBUG to allow
+	 * all messages to be logged if WP_DEBUG is true.
+	 */
+	case DEBUG = 3;
+
+}
 
 final class Plugin {
 
+	/**
+	 * The constructor adds hooks. The whole plugin is driven by these hooks.
+	 */
 	public function __construct() {
 
 		register_activation_hook( __FILE__, [ $this, 'activate' ] );
@@ -30,32 +63,66 @@ final class Plugin {
 		add_filter( 'cron_schedules', [ $this, 'cron_schedule' ] );
 		add_action( 'kntnt_rss_fetch', [ $this, 'fetch_rss' ] );
 
-		self::log( '[INFO] Hooks registered' );
+		self::log( Level::INFO, 'Hooks registered' );
 
 	}
 
-	private static function log( $message = '', ...$args ): void {
-		if ( defined( 'WP_DEBUG' ) && constant( 'WP_DEBUG' ) && defined( 'KNTNT_RSS_FETCHER_DEBUG' ) && constant( 'KNTNT_RSS_FETCHER_DEBUG' ) ) {
-			if ( ! is_string( $message ) ) {
-				if ( is_scalar( $message ) ) {
-					$args = [ $message ];
-				}
-				$message = '%s';
-			}
-			$caller = debug_backtrace( DEBUG_BACKTRACE_IGNORE_ARGS, 2 );
-			$caller = $caller[1]['class'] . '->' . $caller[1]['function'] . '()';
-			foreach ( $args as &$arg ) {
-				if ( is_array( $arg ) || is_object( $arg ) ) {
-					$arg = print_r( $arg, true );
-				}
-			}
-			$message = sprintf( $message, ...$args );
-			error_log( "$caller: $message" );
+	/**
+	 * If `$message` isn't a string, its value is printed. If `$message` is
+	 * a string, it is written with each occurrence of '%s' replaced with
+	 * the value of the corresponding additional argument converted to string.
+	 * Any percent sign that should be written must be escaped with another
+	 * percent sign, that is `%%`.
+	 *
+	 * @param Level $level   Log level
+	 * @param mixed $message [Optional] String with %s where to print remaining arguments, or a single scalar, array, or object.
+	 * @param       ...$args [Optional] Scalars, arrays, and objects to replace %s in message with
+	 *
+	 * @return void
+	 */
+	private static function log( Level $level, mixed $message = '', ...$args ): void {
+
+		// Skip if debugging is disabled
+		if ( ! defined( 'WP_DEBUG' ) || ! constant( 'WP_DEBUG' ) ) {
+			return;
 		}
+
+		// Skip if either:
+		// - it's not an ERROR message and KNTNT_RSS_FETCHER_DEBUG is not defined
+		// - message level is higher than KNTNT_RSS_FETCHER_DEBUG
+		if ( $level !== Level::ERROR && ( ! defined( 'KNTNT_RSS_FETCHER_DEBUG' ) || $level > constant( 'KNTNT_RSS_FETCHER_DEBUG' ) ) ) {
+			return;
+		}
+
+		// Handle the case no message is given, but just
+		if ( ! is_string( $message ) ) {
+			if ( is_scalar( $message ) ) {
+				$args = [ $message ];
+			}
+			$message = '%s';
+		}
+
+		// Stringify the arguments
+		foreach ( $args as &$arg ) {
+			if ( is_array( $arg ) || is_object( $arg ) ) {
+				$arg = print_r( $arg, true );
+			}
+		}
+
+		// Get the caller path
+		$caller = debug_backtrace( DEBUG_BACKTRACE_IGNORE_ARGS, 2 );
+		$caller = $caller[1]['class'] . '->' . $caller[1]['function'] . '()';
+
+		// Output the log message
+		$message = sprintf( $message, ...$args );
+		error_log( "$caller: $message" );
+
 	}
 
 	/**
 	 * Register custom cron interval on plugin activation.
+	 *
+	 * @return void
 	 */
 	public function activate(): void {
 
@@ -66,49 +133,59 @@ final class Plugin {
 
 		$this->schedule_cron();
 
-		self::log( "[INFO] Activated" );
+		self::log( Level::INFO, "Activated" );
 
 	}
 
 	/**
-	 * Clear this plugin's cron schedule.
+	 *  Clear this plugin's cron schedule.
+	 *
+	 * @return void
 	 */
 	private function deschedule_cron(): void {
 		wp_clear_scheduled_hook( 'kntnt_rss_fetch' );
-		self::log( '[INFO] Cleared kntnt_rss_fetch cron schedule.' );
+		self::log( Level::INFO, 'Cleared kntnt_rss_fetch cron schedule.' );
 	}
 
 	/**
-	 * Add plugin's cron schedule.
+	 *  Add plugin's cron schedule.
+	 *
+	 * @return void
 	 */
 	private function schedule_cron(): void {
 
 		$scheduled = wp_schedule_event( time(), 'kntnt_rss_interval', 'kntnt_rss_fetch' );
 
 		if ( $scheduled ) {
-			self::log( '[INFO] Scheduled kntnt_rss_fetch as a recurring event.' );
+			self::log( Level::INFO, 'Scheduled kntnt_rss_fetch as a recurring event.' );
 			return;
 		}
 
 		if ( is_wp_error( $scheduled ) ) {
-			self::log( sprintf( '[ERROR] Failed to schedule kntnt_rss_fetch: %s', $scheduled->get_error_message() ) );
+			self::log( Level::ERROR, sprintf( 'Failed to schedule kntnt_rss_fetch: %s', $scheduled->get_error_message() ) );
 		}
 		else {
-			self::log( '[ERROR] Failed to schedule kntnt_rss_fetch event' );
+			self::log( Level::ERROR, 'Failed to schedule kntnt_rss_fetch event' );
 		}
 
 	}
 
 	/**
 	 * Deactivate hook to clear cron schedule.
+	 *
+	 * @return void
 	 */
 	public function deactivate(): void {
 		$this->deschedule_cron();
-		self::log( "[INFO] Deactivated" );
+		self::log( Level::INFO, "Deactivated" );
 	}
 
 	/**
 	 * Action to run when the options page is saved.
+	 *
+	 * @param $post_id int Post id of the ACF Pro option page calling this function at save.
+	 *
+	 * @return void
 	 */
 	public function save_options_page( $post_id ): void {
 
@@ -116,22 +193,57 @@ final class Plugin {
 			return;
 		}
 
+		$this->set_default_author();
+		$this->reschedule_cron();
+
+	}
+
+	/**
+	 * Sets current user as default author for feeds missing an author.
+	 *
+	 * Iterates through the ACF repeater field 'kntnt_rss_feeds' and sets
+	 * the current user's ID as author for any feed where no author is set.
+	 *
+	 * @return void
+	 */
+	private function set_default_author(): void {
+		while ( have_rows( 'kntnt_rss_feeds', 'option' ) ) {
+			the_row();
+			if ( empty( get_sub_field( 'author' ) ) ) {
+				update_sub_field( 'author', get_current_user_id() );
+			}
+		}
+	}
+
+	/**
+	 * Reschedules the RSS feed fetching cron job.
+	 *
+	 * Removes existing cron schedule, executes an immediate feed fetch,
+	 * and schedules the next cron run. This ensures feeds are current
+	 * after any configuration changes.
+	 *
+	 * @return void
+	 */
+	private function reschedule_cron(): void {
+
 		$this->deschedule_cron();
 		$this->fetch_rss();
 		$this->schedule_cron();
 
-		self::log( '[INFO] Fetched all RSS feeds and rescheduled future fetches.' );
+		self::log( Level::INFO, 'Fetched all RSS feeds and rescheduled future fetches.' );
 
 	}
 
 	/**
 	 * Fetch RSS feed items and create/update posts.
+	 *
+	 * @return void
 	 */
-	public function fetch_rss() {
+	public function fetch_rss(): void {
 
 		// Get all feeds
 		if ( empty( $feed_configs = $this->feed_configs() ) ) {
-			self::log( '[WARNING] No feeds configured.' );
+			self::log( Level::WARNING, 'No feeds configured.' );
 			return;
 		}
 
@@ -144,33 +256,36 @@ final class Plugin {
 			$tags = $feed_config['tags'];
 			$rss_id_table = $this->rss_id_table( $feed_config['url'] );
 
-			self::log( 'Fetching feed from URL: %s', $url );
+			self::log( Level::INFO, 'Fetching feed from URL: %s', $url );
 			$feed = fetch_feed( $url );
 			if ( is_wp_error( $feed ) ) {
 				$error_message = $feed->get_error_message();
-				self::log( '[WARNING] Failed to fetch feed from URL: %s', $url );
+				self::log( Level::WARNING, 'Failed to fetch feed from URL: %s', $url );
 				continue;
 			}
 
 			$feed_items = $feed->get_items( 0, $max_items );
 			if ( empty( $feed_items ) ) {
-				self::log( '[WARNING] No items found in feed URL: %s', $url );
+				self::log( Level::WARNING, 'No items found in feed URL: %s', $url );
 				continue;
 			}
 
 			// Create post of each item
-			self::log( '[INFO] Processing %s items from %s', count( $feed_items ), $url );
 			foreach ( $feed_items as $item ) {
 
 				$item_id = $item->get_id();
 				if ( isset( $rss_id_table[ $item_id ] ) ) {
-					self::log( '[DEBUG] Skipping RSS item "%s" as it already exists as post %s', $item_id, $rss_id_table[ $item_id ] );
-					return null;
+					self::log( Level::DEBUG, 'Skipping RSS item "%s" as it already exists as post %s', $item_id, $rss_id_table[ $item_id ] );
+					return;
 				}
 
-				$item_data = $this->item_data( $item, $item_id );
-
-				$post_id = $this->create_post( $item_data['post_title'], $item_data['post_date'], $item_data['post_excerpt'], $item_data['post_content'], $author_id, $item_data['thumbnail_url'], $tags, $item_id, $item_data['item_link'], $url );
+				self::log( Level::INFO, 'Processing RSS item %s.', $item_id );
+				$item_data = $this->item_data( $item );
+				if ( $post_id = $this->create_post( $item_data, $author_id ) ) {
+					$this->add_metadata_to_post( $post_id, $item_id, $item_data['item_link'], $url );
+					$this->add_tags_to_post( $post_id, $tags );
+					$this->add_thumbnail_to_post( $post_id, $item_data['thumbnail_url'] );
+				}
 
 				$rss_id_table[ $item_id ] = $post_id;
 
@@ -185,40 +300,74 @@ final class Plugin {
 
 	}
 
+	/**
+	 * Retrieves all RSS feed configurations.
+	 *
+	 * Each feed configuration contains following elements:
+	 * - url:           The URL of the feed.
+	 * - author_id:     User ID to be assigned as author of imported posts. Defaults to 0 (no author).
+	 * - max_items:     Maximum number of items to import and retain. Defaults to 10.
+	 * - poll_interval: Minimum minutes between feed content polls. Defaults to 60.
+	 * - tags:          Array of term IDs to assign to imported posts. Defaults to empty array.
+	 *
+	 * @return array<int, array{
+	 *     url: string,
+	 *     author_id: int,
+	 *     max_items: int,
+	 *     poll_interval: int,
+	 *     tags: int[]
+	 * }>
+	 */
 	private function feed_configs(): array {
-		self::log( '[INFO] Build a list of all feeds to process.' );
+		self::log( Level::INFO, 'Build a list of all feeds to process.' );
 		$feeds = [];
 		while ( have_rows( 'kntnt_rss_feeds', 'option' ) ) {
 			the_row();
 			if ( $url = get_sub_field( 'url' ) ) {
 				$feeds[] = [
 					'url' => $url,
-					'author_id' => $this->get_sub_field( 'author', 'get_current_user_id' ),
-					'max_items' => $this->get_sub_field( 'max_items', fn() => 10 ),
-					'poll_interval' => $this->get_sub_field( 'poll_interval', fn() => 60 ),
-					'tags' => $this->get_sub_field( 'tag', fn() => [] ),
+					'author_id' => $this->get_sub_field( 'author', 0 ),
+					'max_items' => $this->get_sub_field( 'max_items', 10 ),
+					'poll_interval' => $this->get_sub_field( 'poll_interval', 60 ),
+					'tags' => $this->get_sub_field( 'tag', [] ),
 				];
 			}
 			else {
-				self::log( '[ERROR] No value found for field "url"' );
+				self::log( Level::ERROR, 'No value found for field "url"' );
 			}
 		}
 		return $feeds;
 	}
 
-	private function get_sub_field( $selector, callable $default ) {
+	/**
+	 * Retrieves a value from an ACF sub-field with fallback to default.
+	 *
+	 * Gets a value from a sub-field in an ACF repeater field. If no value is found
+	 * or the value is empty, returns the provided default value. Supports both
+	 * integer and array return types.
+	 *
+	 * @param string    $selector Field selector/name in the ACF repeater.
+	 * @param int|array $default  Default value to return if field is empty.
+	 *
+	 * @return int|array Value from the ACF field or the default value.
+	 */
+	private function get_sub_field( string $selector, int|array $default ): int|array {
 		$value = get_sub_field( $selector );
 		if ( ! $value ) {
-			$value = $default();
-			self::log( '[WARNING] No value found for field "%s", using default value: %s', $selector, $default );
+			$value = $default;
+			self::log( Level::WARNING, 'No value found for field "%s", using default value: %s', $selector, $default );
 		}
 		return $value;
 	}
 
 	/**
-	 * Build a hash table of existing RSS items for faster lookup.
+	 * Retrieves a hash table mapping feed item IDs to post IDs for a specific feed URL.
+	 *
+	 * @param string $feed_url URL of the RSS feed.
+	 *
+	 * @return array<string, int> Hash table where feed item IDs are keys and WordPress post IDs are values.
 	 */
-	private function rss_id_table( $feed_url ): array {
+	private function rss_id_table( string $feed_url ): array {
 
 		$args = [
 			'post_type' => 'kntnt-rss-item',
@@ -243,54 +392,80 @@ final class Plugin {
 			$table[ $rss_id ] = $post_id;
 		}
 
-		self::log( 'Found %s existing posts for the feed %s.', count( $rss_post_ids ), $feed_url );
+		self::log( Level::INFO, 'Found %s existing posts for the feed %s.', count( $rss_post_ids ), $feed_url );
 
 		return $table;
 
 	}
 
-	private function item_data( \SimplePie\Item $item, $item_id ): ?array {
+	/**
+	 * Extracts and processes data from a feed item for post creation.
+	 *
+	 * The returned array contains following elements:
+	 * - post_title:    Post title from feed, generated from post_excerpt if missing.
+	 * - post_date:     Date in Y-m-d H:i:s format, defaults to current time.
+	 * - post_excerpt:  Post excerpt from feed description or content.
+	 * - post_content:  Post content from feed content or description.
+	 * - item_link:     URL to original feed item.
+	 * - thumbnail_url: URL to item's featured image, null if invalid or missing.
+	 *
+	 * @param \SimplePie\Item $item Feed item to process.
+	 *
+	 * @return array{
+	 *     post_title: ?string,
+	 *     post_date: string,
+	 *     post_excerpt: ?string,
+	 *     post_content: ?string,
+	 *     item_link: ?string,
+	 *     thumbnail_url: ?string
+	 * } Processed feed item data ready for post creation.
+	 */
+	private function item_data( \SimplePie\Item $item ): array {
 
 		$post_date = $item->get_date( 'Y-m-d H:i:s' );
 		if ( ! $post_date ) {
 			$post_date = current_time( 'Y-m-d H:i:s' );
-			self::log( '[WARNING] No publishing date found, using curren time for item ID: %s', $item_id );
+			self::log( Level::WARNING, 'No publishing date found, using curren time.' );
 		}
 
 		$post_excerpt = $item->get_description( true );
 		$post_content = $item->get_content( true );
 		if ( ! $post_excerpt && $post_content ) {
 			$post_excerpt = $post_content;
-			self::log( '[INFO] No description found, using content for item ID: %s', $item_id );
+			self::log( Level::INFO, 'No description found, using content.' );
 		}
 		elseif ( $post_excerpt && ! $post_content ) {
 			$content_encoded = $post_excerpt;
-			self::log( '[INFO] No content found, using description for item ID: %s', $item_id );
+			self::log( Level::INFO, 'No content found, using description.' );
 		}
 		elseif ( ! $post_excerpt && ! $post_content ) {
-			self::log( '[WARNING] No description or content found for item ID: %s', $item_id );
+			self::log( Level::WARNING, 'No description or content found.' );
 		}
 
 		$post_title = $item->get_title();
 		if ( ! $post_excerpt ) {
-			self::log( '[WARNING] No title found for item ID: %s', $item_id );
+			self::log( Level::WARNING, 'No title found.' );
 		}
 		else {
 			$this->generate_title_from_description( $post_excerpt );
-			self::log( '[WARNING] No title found, generated title from description for item ID: %s', $item_id );
+			self::log( Level::WARNING, 'No title found, generated title from description.' );
 		}
 
 		$item_link = $item->get_link();
 		if ( ! $item_link ) {
-			self::log( '[WARNING] No link found for item ID: %s', $item_id );
+			self::log( Level::WARNING, 'No link found.' );
 		}
 
 		$thumbnail_url = $this->get_feed_item_image( $item );
 		if ( empty( $thumbnail_url ) ) {
-			self::log( '[INFO] No thumbnail found for item: %s', $item->get_title() );
+			self::log( Level::INFO, 'No thumbnail found for item: %s', $item->get_title() );
+		}
+		elseif ( ! filter_var( $thumbnail_url, FILTER_VALIDATE_URL ) ) {
+			$thumbnail_url = null;
+			self::log( Level::WARNING, 'Invalid thumbnail URL: %s', $thumbnail_url );
 		}
 		else {
-			self::log( '[DEBUG] Thumbnail URL found: %s', $thumbnail_url );
+			self::log( Level::DEBUG, 'Thumbnail URL found: %s', $thumbnail_url );
 		}
 
 		return [
@@ -304,6 +479,14 @@ final class Plugin {
 
 	}
 
+	/**
+	 * Truncates a long text to create a title, ensuring it doesn't exceed 50 characters,
+	 * breaking only at word boundaries. If truncated, adds an ellipsis to the end.
+	 *
+	 * @param string $title Text to be truncated into a title.
+	 *
+	 * @return string Truncated text with ellipsis if shortened, original text if under limit.
+	 */
 	private function generate_title_from_description( string $title ): string {
 		if ( strlen( $title ) > 50 ) {
 			$words = explode( ' ', $title );
@@ -315,7 +498,19 @@ final class Plugin {
 		return $title;
 	}
 
-	private function get_feed_item_image( $item ) {
+	/**
+	 * Extracts an image URL from a feed item, checking multiple potential sources.
+	 *
+	 * Checks sources in this order:
+	 * 1. Item's thumbnail
+	 * 2. Image enclosures
+	 * 3. First image found in content
+	 *
+	 * @param \SimplePie\Item $item Feed item to extract image from.
+	 *
+	 * @return string|null URL of the first found image, or null if no image found.
+	 */
+	private function get_feed_item_image( \SimplePie\Item $item ): ?string {
 
 		// Try thumbnail first - already sanitized by SimplePie
 		$thumbnail = $item->get_thumbnail();
@@ -337,140 +532,239 @@ final class Plugin {
 			return esc_url( $matches[1] );
 		}
 
-		return false;
+		return null;
 
 	}
 
-	private function create_post( $post_title, $post_date, $post_excerpt, $post_content, $author_id, $thumbnail_url, $tags, $item_id, $item_link, $url ) {
+	/**
+	 * Creates a WordPress post from feed item data.
+	 *
+	 * The feed item data $item_data should contain following elements:
+	 * - post_title:   The title of the post.
+	 * - post_date:    Publication date in Y-m-d H:i:s format.
+	 * - post_excerpt: Optional excerpt.
+	 * - post_content: The main content of the post.
+	 *
+	 * @param array{
+	 *     post_title: string,
+	 *     post_date: string,
+	 *     post_excerpt: string,
+	 *     post_content: string
+	 * }          $item_data Feed item data to create post from.
+	 * @param int $author_id User ID to set as post author.
+	 *
+	 * @return int Post ID if creation successful, 0 on failure.
+	 */
+	private function create_post( array $item_data, int $author_id ): int {
 
-		$post_id = wp_insert_post( [
-			                           'post_title' => $post_title,
-			                           'post_date' => $post_date,
-			                           'post_excerpt' => $post_excerpt,
-			                           'post_content' => $post_content,
-			                           'post_status' => 'published',
-			                           'post_author' => $author_id,
-		                           ] );
+		$post_data = [
+			'post_title' => $item_data['post_title'],
+			'post_date' => $item_data['post_date'],
+			'post_excerpt' => $item_data['post_excerpt'],
+			'post_content' => $item_data['post_content'],
+			'post_status' => 'published',
+			'post_author' => $author_id,
+		];
+
+		$post_id = wp_insert_post( $post_data );
 		if ( is_wp_error( $post_id ) ) {
-			self::log( "[ERROR] Inserting post failed for item ID: %s\nError message: %s\n", $item_id, $post_id->get_error_message() );
-			return null;
+			self::log( Level::ERROR, "Inserting post failed: %s", $post_id->get_error_message() );
+			return 0;
 		}
 		else {
-			self::log( "[INFO] Created post id %s from item ID %s", $post_id, $item_id );
+			self::log( Level::INFO, "Created post id %s", $post_id );
 		}
+
+		return $post_id;
+
+	}
+
+	/**
+	 * Adds RSS-related metadata to a post.
+	 *
+	 * Adds three meta fields:
+	 * - kntnt_rss_item_feed: The feed URL
+	 * - kntnt_rss_item_id:   The item's ID in the feed
+	 * - kntnt_rss_item_link: The item's original URL (if available)
+	 *
+	 * @param int    $post_id   The post ID to add metadata to.
+	 * @param string $item_id   The feed item's unique identifier.
+	 * @param string $item_link The feed item's original URL.
+	 * @param string $url       The feed URL.
+	 *
+	 * @return void
+	 */
+	private function add_metadata_to_post( int $post_id, string $item_id, string $item_link, string $url ): void {
 
 		if ( update_post_meta( $post_id, 'kntnt_rss_item_feed', $url ) ) {
-			self::log( '[DEBUG] Update post %s with RSS feed URL: %s', $post_id, $url );
+			self::log( Level::DEBUG, 'Update post %s with RSS feed URL: %s', $post_id, $url );
 		}
 		else {
-			self::log( '[ERROR] Failed to update post %s with RSS feed URL: %s', $post_id, $url );
+			self::log( Level::ERROR, 'Failed to update post %s with RSS feed URL: %s', $post_id, $url );
 		}
 
 		if ( update_post_meta( $post_id, 'kntnt_rss_item_id', $item_id ) ) {
-			self::log( '[DEBUG] Update post %s with RSS item ID: %s', $post_id, $item_id );
+			self::log( Level::DEBUG, 'Update post %s with RSS item ID: %s', $post_id, $item_id );
 		}
 		else {
-			self::log( '[ERROR] Failed to update post %s with RSS item ID: %s', $post_id, $item_id );
+			self::log( Level::ERROR, 'Failed to update post %s with RSS item ID: %s', $post_id, $item_id );
 		}
 
 		if ( $item_link ) {
 			if ( update_post_meta( $post_id, 'kntnt_rss_item_link', $item_link ) ) {
-				self::log( '[DEBUG] Update post %s with RSS item link: %s', $post_id, $item_link );
+				self::log( Level::DEBUG, 'Update post %s with RSS item link: %s', $post_id, $item_link );
 			}
 			else {
-				self::log( '[ERROR] Failed to update post %s with RSS item link: %s', $post_id, $item_link );
-			}
-		}
-
-		if ( ! empty( $tags ) && is_array( $tags ) ) {
-			$tids = wp_set_object_terms( $post_id, $tags, 'kntnt-rss-tag' );
-			if ( is_wp_error( $tids ) ) {
-				self::log( '[ERROR] Failed to update post %s with tags: %s', $post_id, $tags );
-			}
-		}
-
-		if ( $thumbnail_url ) {
-			self::log( 'Uploading thumbnail from %s to post ID: %s', $thumbnail_url, $post_id );
-			$thumbnail_id = $this->upload_image( $thumbnail_url, $post_id );
-			if ( $thumbnail_id && ! is_wp_error( $thumbnail_id ) ) {
-				if ( set_post_thumbnail( $post_id, $thumbnail_id ) ) {
-					self::log( '[DEBUG] Thumbnail set successfully, thumbnail ID: %s for post ID: %s', $thumbnail_id, $post_id );
-				}
-				else {
-					self::log( '[ERROR] Could not upate post %s with thumbnail ID: %s', $post_id, $thumbnail_id );
-				}
+				self::log( Level::ERROR, 'Failed to update post %s with RSS item link: %s', $post_id, $item_link );
 			}
 		}
 
 	}
 
 	/**
-	 * Handle image upload from URL and attach to post.
+	 * Assigns tags to a post in the 'kntnt-rss-tag' taxonomy.
+	 *
+	 * @param int   $post_id The post ID to assign tags to.
+	 * @param int[] $tags    Array of term IDs in the kntnt-rss-tag taxonomy.
+	 *
+	 * @return void
+	 */
+	private function add_tags_to_post( int $post_id, array $tags ): void {
+		if ( ! empty( $tags ) ) {
+			$tids = wp_set_object_terms( $post_id, $tags, 'kntnt-rss-tag' );
+			if ( is_wp_error( $tids ) ) {
+				self::log( Level::ERROR, 'Failed to update post %s with tags: %s', $post_id, $tags );
+			}
+		}
+	}
+
+	/**
+	 * Downloads and sets a remote image as the post's featured image.
+	 *
+	 * Downloads the image from the provided URL, adds it to the media library,
+	 * and sets it as the post's featured image (thumbnail).
+	 *
+	 * @param int    $post_id       The post ID to set the thumbnail for.
+	 * @param string $thumbnail_url URL of the image to use as thumbnail.
+	 *
+	 * @return void
+	 */
+	private function add_thumbnail_to_post( int $post_id, string $thumbnail_url ): void {
+		if ( $thumbnail_url ) {
+			self::log( Level::DEBUG, 'Uploading thumbnail from %s to post ID: %s', $thumbnail_url, $post_id );
+			$thumbnail_id = $this->upload_image( $thumbnail_url, $post_id );
+			if ( $thumbnail_id && ! is_wp_error( $thumbnail_id ) ) {
+				if ( set_post_thumbnail( $post_id, $thumbnail_id ) ) {
+					self::log( Level::DEBUG, 'Thumbnail set successfully, thumbnail ID: %s for post ID: %s', $thumbnail_id, $post_id );
+				}
+				else {
+					self::log( Level::ERROR, 'Could not upate post %s with thumbnail ID: %s', $post_id, $thumbnail_id );
+				}
+			}
+		}
+	}
+
+	/**
+	 * Downloads an image from a URL and adds it to the WordPress media library.
+	 *
+	 * First downloads the image to a temporary file, then adds it to the media library
+	 * using WordPress' sideloading functionality. The temporary file is removed after
+	 * the upload regardless of success or failure.
+	 *
+	 * @param string $image_url URL of the image to download.
+	 * @param int    $post_id   Post ID to associate the uploaded image with.
+	 *
+	 * @return int|false Attachment ID if successful, false on failure.
 	 */
 	private function upload_image( $image_url, $post_id ): string|bool {
 
-		self::log( 'Downloading image from URL: %s', $image_url );
+		self::log( Level::DEBUG, 'Downloading image from URL: %s', $image_url );
 		$tmp_file = download_url( $image_url );
 		if ( is_wp_error( $tmp_file ) ) {
-			self::log( '[ERROR] Downloading image failed: %s', $tmp_file->get_error_message() );
+			self::log( Level::ERROR, 'Downloading image failed: %s', $tmp_file->get_error_message() );
 			return false;
 		}
-		self::log( '[DEBUG] Image downloaded to temp file: %s', $tmp_file );
+		self::log( Level::DEBUG, 'Image downloaded to temp file: %s', $tmp_file );
 
 		// Get filename from URL path
 		$file_name = basename( parse_url( $image_url, PHP_URL_PATH ) );
 
-		self::log( '[DEBUG] Sideloading media: %s', $file_name );
+		self::log( Level::DEBUG, 'Sideloading media: %s', $file_name );
 		$file_array = [];
 		$file_array['tmp_name'] = $tmp_file;
 		$file_array['name'] = $file_name;
 		$attachment_id = media_handle_sideload( $file_array, $post_id, null );
 		if ( is_wp_error( $attachment_id ) ) {
 			@unlink( $tmp_file );
-			self::log( '[ERROR] Media sideloading failed: %s', $attachment_id->get_error_message() );
+			self::log( Level::ERROR, 'Media sideloading failed: %s', $attachment_id->get_error_message() );
 			return false;
 		}
-		self::log( '[INFO] Media sideloaded successfully, attachment ID: %s', $attachment_id );
+		self::log( Level::INFO, 'Media sideloaded successfully, attachment ID: %s', $attachment_id );
 
 		return $attachment_id;
 
 	}
 
-	private function prune_items( array $rss_id_table, int $max_items ) {
+	/**
+	 * Removes oldest imported posts when exceeding maximum item limit.
+	 *
+	 * Sorts posts by creation order and deletes the oldest posts until the
+	 * number of remaining posts equals the maximum limit. Posts are permanently
+	 * deleted (not moved to trash).
+	 *
+	 * @param array<string, int> $rss_id_table Hash table mapping feed item IDs to post IDs.
+	 * @param int                $max_items    Maximum number of posts to keep.
+	 *
+	 * @return void
+	 */
+	private function prune_items( array $rss_id_table, int $max_items ): void {
 		asort( $rss_id_table, SORT_NUMERIC ); // Sort by post id (creation order)
 		$prune_ids = array_slice( $rss_id_table, 0, count( $rss_id_table ) - $max_items );
 		foreach ( $prune_ids as $id ) {
 			if ( wp_delete_post( $id, true ) ) {
-				self::log( '[DEBUG] Deleted post ID:', $id );
+				self::log( Level::DEBUG, 'Deleted post ID:', $id );
 			}
 			else {
-				self::log( '[ERROR] Failed to delete post ID:', $id );
+				self::log( Level::ERROR, 'Failed to delete post ID:', $id );
 			}
 		}
 	}
 
 	/**
-	 * Add custom cron schedule based on ACF option.
+	 * Adds a custom cron schedule for RSS polling.
+	 *
+	 * Adds the schedule 'kntnt_rss_interval' to WordPress cron schedules.
+	 * The interval is determined by the shortest poll interval among all feeds.
+	 *
+	 * @param array $schedules Array of existing cron schedules.
+	 *
+	 * @return array Modified array of cron schedules with kntnt_rss_interval added.
 	 */
-	public function cron_schedule( $schedules ): array {
+	public function cron_schedule( array $schedules ): array {
 		$interval = $this->get_min_interval();
 		$schedules['kntnt_rss_interval'] = [
 			'interval' => $interval,
 			'display' => 'Kntnt RSS Fetcher Poll Interval',
 		];
-		self::log( 'Added pol interval schedule kntnt_rss_interval: %s minutes', $interval );
+		self::log( Level::DEBUG, 'Added poll interval schedule kntnt_rss_interval: %s minutes', $interval );
 		return $schedules;
 	}
 
 	/**
-	 * Get the minimum poll interval from all feeds.
+	 * Gets the shortest poll interval among all configured feeds.
+	 *
+	 * Reads poll_interval from ACF repeater field 'kntnt_rss_feeds' and returns
+	 * the minimum interval in seconds. If no interval is configured, defaults to
+	 * HOUR_IN_SECONDS (3600 seconds).
+	 *
+	 * @return int Minimum poll interval in seconds.
 	 */
 	private function get_min_interval(): int {
 		$min_interval = null;
 		while ( have_rows( 'kntnt_rss_feeds', 'option' ) ) {
 			the_row();
 			$interval = (int) get_sub_field( 'poll_interval' ) * 60; // In seconds
-			self::log( '[DEBUG] Poll interval of %s: %s minutes', get_sub_field( 'url' ), $interval );
+			self::log( Level::DEBUG, 'Poll interval of %s: %s minutes', get_sub_field( 'url' ), $interval );
 			if ( $interval ) {
 				if ( ! $min_interval || $interval < $min_interval ) {
 					$min_interval = $interval;
@@ -478,10 +772,10 @@ final class Plugin {
 			}
 		}
 		if ( ! $min_interval ) {
-			self::log( '[WARNING] No poll interval found. Defaults to hourly.' );
+			self::log( Level::WARNING, 'No poll interval found. Defaults to hourly.' );
 			$min_interval = HOUR_IN_SECONDS;
 		}
-		self::log( '[INFO] Poll interval is %s minutes.', $min_interval / 60 );
+		self::log( Level::INFO, 'Poll interval is %s minutes.', $min_interval / 60 );
 		return $min_interval;
 	}
 
