@@ -451,11 +451,13 @@ final class Plugin {
 
 		$post_title = $item->get_title();
 		if ( ! $post_title ) {
-			self::log( Level::WARNING, 'No title found.' );
-		}
-		else {
-			$post_title = $this->generate_title_from_description( $post_excerpt );
-			self::log( Level::WARNING, 'No title found, generated title from description.' );
+			if ( $post_excerpt ) {
+				$post_title = $this->generate_title_from_description( $post_excerpt );
+				self::log( Level::WARNING, 'No title found, generated title from description.' );
+			}
+			else {
+				self::log( Level::WARNING, 'No title found.' );
+			}
 		}
 
 		$item_link = $item->get_link();
