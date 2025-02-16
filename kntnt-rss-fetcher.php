@@ -17,6 +17,8 @@
 
 namespace Kntnt\RSSFetcher;
 
+use SimplePie\Item;
+
 defined( 'WPINC' ) && new Plugin;
 
 enum Level: int {
@@ -183,11 +185,9 @@ final class Plugin {
 	/**
 	 * Action to run when the options page is saved.
 	 *
-	 * @param $post_id int Post id of the ACF Pro option page calling this function at save.
-	 *
 	 * @return void
 	 */
-	public function save_options_page( $post_id ): void {
+	public function save_options_page(): void {
 
 		if ( ! isset( $_GET['page'] ) || $_GET['page'] !== 'kntnt-rss-settings' ) {
 			return;
@@ -260,7 +260,7 @@ final class Plugin {
 			$feed = fetch_feed( $url );
 			if ( is_wp_error( $feed ) ) {
 				$error_message = $feed->get_error_message();
-				self::log( Level::WARNING, 'Failed to fetch feed from URL: %s', $url );
+				self::log( Level::WARNING, 'Failed to fetch feed from %s: %s', $url, $error_message );
 				continue;
 			}
 
@@ -409,7 +409,7 @@ final class Plugin {
 	 * - item_link:     URL to original feed item.
 	 * - thumbnail_url: URL to item's featured image, null if invalid or missing.
 	 *
-	 * @param \SimplePie\Item $item Feed item to process.
+	 * @param Item $item Feed item to process.
 	 *
 	 * @return array{
 	 *     post_title: ?string,
@@ -420,7 +420,7 @@ final class Plugin {
 	 *     thumbnail_url: ?string
 	 * } Processed feed item data ready for post creation.
 	 */
-	private function item_data( \SimplePie\Item $item ): array {
+	private function item_data( Item $item ): array {
 
 		$post_date = $item->get_date( 'Y-m-d H:i:s' );
 		if ( ! $post_date ) {
@@ -435,7 +435,6 @@ final class Plugin {
 			self::log( Level::INFO, 'No description found, using content.' );
 		}
 		elseif ( $post_excerpt && ! $post_content ) {
-			$content_encoded = $post_excerpt;
 			self::log( Level::INFO, 'No content found, using description.' );
 		}
 		elseif ( ! $post_excerpt && ! $post_content ) {
@@ -447,7 +446,7 @@ final class Plugin {
 			self::log( Level::WARNING, 'No title found.' );
 		}
 		else {
-			$this->generate_title_from_description( $post_excerpt );
+			$post_title = $this->generate_title_from_description( $post_excerpt );
 			self::log( Level::WARNING, 'No title found, generated title from description.' );
 		}
 
@@ -506,11 +505,11 @@ final class Plugin {
 	 * 2. Image enclosures
 	 * 3. First image found in content
 	 *
-	 * @param \SimplePie\Item $item Feed item to extract image from.
+	 * @param Item $item Feed item to extract image from.
 	 *
 	 * @return string|null URL of the first found image, or null if no image found.
 	 */
-	private function get_feed_item_image( \SimplePie\Item $item ): ?string {
+	private function get_feed_item_image( Item $item ): ?string {
 
 		// Try thumbnail first - already sanitized by SimplePie
 		$thumbnail = $item->get_thumbnail();
@@ -521,7 +520,7 @@ final class Plugin {
 		// Check enclosures - already sanitized by SimplePie
 		$enclosures = $item->get_enclosures();
 		foreach ( $enclosures as $enclosure ) {
-			if ( strpos( $enclosure->get_type(), 'image' ) === 0 ) {
+			if ( str_starts_with( $enclosure->get_type(), 'image' ) ) {
 				return $enclosure->get_link();
 			}
 		}
@@ -658,7 +657,7 @@ final class Plugin {
 					self::log( Level::DEBUG, 'Thumbnail set successfully, thumbnail ID: %s for post ID: %s', $thumbnail_id, $post_id );
 				}
 				else {
-					self::log( Level::ERROR, 'Could not upate post %s with thumbnail ID: %s', $post_id, $thumbnail_id );
+					self::log( Level::ERROR, 'Could not update post %s with thumbnail ID: %s', $post_id, $thumbnail_id );
 				}
 			}
 		}
@@ -676,7 +675,7 @@ final class Plugin {
 	 *
 	 * @return int|false Attachment ID if successful, false on failure.
 	 */
-	private function upload_image( $image_url, $post_id ): string|bool {
+	private function upload_image( string $image_url, int $post_id ): string|bool {
 
 		self::log( Level::DEBUG, 'Downloading image from URL: %s', $image_url );
 		$tmp_file = download_url( $image_url );
