@@ -441,6 +441,7 @@ final class Plugin {
 			self::log( Level::INFO, 'No description found, using content.' );
 		}
 		elseif ( $post_excerpt && ! $post_content ) {
+			$post_content = $post_excerpt;
 			self::log( Level::INFO, 'No content found, using description.' );
 		}
 		elseif ( ! $post_excerpt && ! $post_content ) {
