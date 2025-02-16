@@ -61,6 +61,7 @@ final class Plugin {
 
 		register_activation_hook( __FILE__, [ $this, 'activate' ] );
 		register_deactivation_hook( __FILE__, [ $this, 'deactivate' ] );
+		register_uninstall_hook( __FILE__, 'uninstall' );
 
 		add_action( 'acf/save_post', [ $this, 'save_options_page' ] );
 		add_filter( 'cron_schedules', [ $this, 'cron_schedule' ] );
@@ -183,6 +184,47 @@ final class Plugin {
 	public function deactivate(): void {
 		$this->deschedule_cron();
 		self::log( Level::INFO, "Deactivated" );
+	}
+
+	/**
+	 * Delete options, posts, terms and images on uninstallation.
+	 *
+	 * @return void
+	 */
+	public function uninstall(): void {
+
+		// Delete options
+		$options = wp_load_alloptions();
+		foreach ( $options as $option => $value ) {
+			if ( str_starts_with( $option, 'options_kntnt_rss_' ) || str_starts_with( $option, '_options_kntnt_rss_' ) ) {
+				delete_option( $option );
+			}
+		}
+
+		// Delete posts and images by delete_image_with_post()
+		$posts = get_posts( [
+			                    'post_type' => 'kntnt-rss-item',
+			                    'numberposts' => - 1,
+			                    'post_status' => 'any',
+		                    ] );
+		foreach ( $posts as $post ) {
+			wp_delete_post( $post->ID, true );
+		}
+
+		// Delete terms
+		$terms = get_terms( [
+			                    'taxonomy' => 'kntnt-rss-tag',
+			                    'hide_empty' => false,
+		                    ] );
+		if ( ! is_wp_error( $terms ) ) {
+			foreach ( $terms as $term ) {
+				wp_delete_term( $term->term_id, 'kntnt-rss-tag' );
+			}
+		}
+
+		// Log completion of uninstall process (optional
+		self::log( Level::INFO, 'Uninstalled kntnt_rss_fetch' );
+
 	}
 
 	/**
@@ -832,4 +874,6 @@ final class Plugin {
 
 }
 
-new Plugin;
+add_action( 'plugins_loaded', function () { // TODO: Necessary?
+	new Plugin;
+} );
