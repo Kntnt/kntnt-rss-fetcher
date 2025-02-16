@@ -278,7 +278,7 @@ final class Plugin {
 				$item_id = $item->get_id();
 				if ( isset( $rss_id_table[ $item_id ] ) ) {
 					self::log( Level::DEBUG, 'Skipping RSS item "%s" as it already exists as post %s', $item_id, $rss_id_table[ $item_id ] );
-					return;
+					continue;
 				}
 
 				self::log( Level::INFO, 'Processing RSS item %s.', $item_id );
