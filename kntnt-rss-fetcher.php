@@ -55,6 +55,58 @@ enum Level: int {
 final class Plugin {
 
 	/**
+	 * If `$message` isn't a string, its value is printed. If `$message` is
+	 * a string, it is written with each occurrence of '%s' replaced with
+	 * the value of the corresponding additional argument converted to string.
+	 * Any percent sign that should be written must be escaped with another
+	 * percent sign, that is `%%`.
+	 *
+	 * @param Level $level   Log level
+	 * @param mixed $message [Optional] String with %s where to print remaining arguments, or a single scalar, array, or object.
+	 * @param       ...$args [Optional] Scalars, arrays, and objects to replace %s in message with
+	 *
+	 * @return void
+	 */
+	private static function log( Level $level, mixed $message = '', ...$args ): void {
+
+		// Skip if debugging is disabled
+		if ( ! defined( 'WP_DEBUG' ) || ! constant( 'WP_DEBUG' ) ) {
+			return;
+		}
+
+		// Skip if either:
+		// - it's not an ERROR message and KNTNT_RSS_FETCHER_DEBUG is not defined
+		// - message level is higher than KNTNT_RSS_FETCHER_DEBUG
+		if ( $level !== Level::ERROR && ( ! defined( 'KNTNT_RSS_FETCHER_DEBUG' ) || $level > constant( 'KNTNT_RSS_FETCHER_DEBUG' ) ) ) {
+			return;
+		}
+
+		// Handle the case no message is given, but just
+		if ( ! is_string( $message ) ) {
+			if ( is_scalar( $message ) ) {
+				$args = [ $message ];
+			}
+			$message = '%s';
+		}
+
+		// Stringify the arguments
+		foreach ( $args as &$arg ) {
+			if ( is_array( $arg ) || is_object( $arg ) ) {
+				$arg = print_r( $arg, true );
+			}
+		}
+
+		// Get the caller path
+		$caller = debug_backtrace( DEBUG_BACKTRACE_IGNORE_ARGS, 2 );
+		$caller = $caller[1]['class'] . '->' . $caller[1]['function'] . '()';
+
+		// Output the log message
+		$message = sprintf( $message, ...$args );
+		error_log( "$caller: $message" );
+
+	}
+
+	/**
 	 * The constructor adds hooks. The whole plugin is driven by these hooks.
 	 */
 	public function __construct() {
@@ -319,58 +371,6 @@ final class Plugin {
 	}
 
 	/**
-	 * If `$message` isn't a string, its value is printed. If `$message` is
-	 * a string, it is written with each occurrence of '%s' replaced with
-	 * the value of the corresponding additional argument converted to string.
-	 * Any percent sign that should be written must be escaped with another
-	 * percent sign, that is `%%`.
-	 *
-	 * @param Level $level   Log level
-	 * @param mixed $message [Optional] String with %s where to print remaining arguments, or a single scalar, array, or object.
-	 * @param       ...$args [Optional] Scalars, arrays, and objects to replace %s in message with
-	 *
-	 * @return void
-	 */
-	private static function log( Level $level, mixed $message = '', ...$args ): void {
-
-		// Skip if debugging is disabled
-		if ( ! defined( 'WP_DEBUG' ) || ! constant( 'WP_DEBUG' ) ) {
-			return;
-		}
-
-		// Skip if either:
-		// - it's not an ERROR message and KNTNT_RSS_FETCHER_DEBUG is not defined
-		// - message level is higher than KNTNT_RSS_FETCHER_DEBUG
-		if ( $level !== Level::ERROR && ( ! defined( 'KNTNT_RSS_FETCHER_DEBUG' ) || $level > constant( 'KNTNT_RSS_FETCHER_DEBUG' ) ) ) {
-			return;
-		}
-
-		// Handle the case no message is given, but just
-		if ( ! is_string( $message ) ) {
-			if ( is_scalar( $message ) ) {
-				$args = [ $message ];
-			}
-			$message = '%s';
-		}
-
-		// Stringify the arguments
-		foreach ( $args as &$arg ) {
-			if ( is_array( $arg ) || is_object( $arg ) ) {
-				$arg = print_r( $arg, true );
-			}
-		}
-
-		// Get the caller path
-		$caller = debug_backtrace( DEBUG_BACKTRACE_IGNORE_ARGS, 2 );
-		$caller = $caller[1]['class'] . '->' . $caller[1]['function'] . '()';
-
-		// Output the log message
-		$message = sprintf( $message, ...$args );
-		error_log( "$caller: $message" );
-
-	}
-
-	/**
 	 * Reschedules the RSS feed fetching cron job.
 	 *
 	 * Removes existing cron schedule, executes an immediate feed fetch,
@@ -509,46 +509,6 @@ final class Plugin {
 			self::log( Level::WARNING, 'No value found for field "%s", using default value: %s', $selector, $default );
 		}
 		return $value;
-	}
-
-	/**
-	 * Retrieves a hash table mapping feed item IDs to post IDs for a specific feed URL.
-	 *
-	 * @param string $feed_url URL of the RSS feed.
-	 *
-	 * @return array<string, int> Hash table where feed item IDs are keys and WordPress post IDs are values.
-	 */
-	private function rss_id_table( string $feed_url ): array {
-
-		$args = [
-			'post_type' => 'kntnt-rss-item',
-			'posts_per_page' => - 1,
-			'orderby'          => 'date',
-			'order'            => 'DESC',
-			'fields' => 'ids',
-			'meta_query' => [
-				[
-					'key' => 'kntnt_rss_item_id', // Ensures get_post_meta() below returs a value for 'kntnt_rss_item_id'
-				],
-				[
-					'key' => 'kntnt_rss_item_feed',
-					'value' => $feed_url,
-					'compare' => '=',
-				],
-			],
-		];
-		$rss_post_ids = get_posts( $args );
-
-		$table = [];
-		foreach ( $rss_post_ids as $post_id ) {
-			$rss_id = get_post_meta( $post_id, 'kntnt_rss_item_id', true );
-			$table[ $rss_id ] = $post_id;
-		}
-
-		self::log( Level::INFO, 'Found %s existing posts for the feed %s.', count( $rss_post_ids ), $feed_url );
-
-		return $table;
-
 	}
 
 	/**
@@ -858,6 +818,46 @@ final class Plugin {
 		self::log( Level::INFO, 'Media sideloaded successfully, attachment ID: %s', $attachment_id );
 
 		return $attachment_id;
+
+	}
+
+	/**
+	 * Retrieves a hash table mapping feed item IDs to post IDs for a specific feed URL.
+	 *
+	 * @param string $feed_url URL of the RSS feed.
+	 *
+	 * @return array<string, int> Hash table where feed item IDs are keys and WordPress post IDs are values.
+	 */
+	private function rss_id_table( string $feed_url ): array {
+
+		$args = [
+			'post_type' => 'kntnt-rss-item',
+			'posts_per_page' => - 1,
+			'orderby'          => 'date',
+			'order'            => 'DESC',
+			'fields' => 'ids',
+			'meta_query' => [
+				[
+					'key' => 'kntnt_rss_item_id', // Ensures get_post_meta() below returs a value for 'kntnt_rss_item_id'
+				],
+				[
+					'key' => 'kntnt_rss_item_feed',
+					'value' => $feed_url,
+					'compare' => '=',
+				],
+			],
+		];
+		$rss_post_ids = get_posts( $args );
+
+		$table = [];
+		foreach ( $rss_post_ids as $post_id ) {
+			$rss_id = get_post_meta( $post_id, 'kntnt_rss_item_id', true );
+			$table[ $rss_id ] = $post_id;
+		}
+
+		self::log( Level::INFO, 'Found %s existing posts for the feed %s.', count( $rss_post_ids ), $feed_url );
+
+		return $table;
 
 	}
 
