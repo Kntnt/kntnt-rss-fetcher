@@ -20,7 +20,7 @@ The point of importing feed items into posts is that they can all be displayed i
 ## Installation
 
 1. Install and activate [ACF Pro](https://www.advancedcustomfields.com/pro/)
-2. Download the plugin zip archive.
+2. [Download the plugin zip archive.](https://github.com/Kntnt/kntnt-rss-fetcher/releases/latest/download/kntnt-rss-fetcher.zip)
 3. Extract the `acf.json` file from the zip archive.
 4. Go to WordPress admin panel → ACF → Tools.
 5. In the Import panel, select the extracted `acf.json` file and click "Import JSON"
