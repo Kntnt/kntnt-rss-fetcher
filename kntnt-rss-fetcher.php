@@ -523,6 +523,8 @@ final class Plugin {
 		$args = [
 			'post_type' => 'kntnt-rss-item',
 			'posts_per_page' => - 1,
+			'orderby'          => 'date',
+			'order'            => 'DESC',
 			'fields' => 'ids',
 			'meta_query' => [
 				[
@@ -872,7 +874,6 @@ final class Plugin {
 	 * @return void
 	 */
 	private function prune_items( array $rss_id_table, int $max_items ): void {
-		asort( $rss_id_table, SORT_NUMERIC ); // Sort by post id (creation order)
 		$prune_ids = array_slice( $rss_id_table, 0, count( $rss_id_table ) - $max_items );
 		foreach ( $prune_ids as $id ) {
 			if ( wp_delete_post( $id, true ) ) {
