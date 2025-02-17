@@ -260,7 +260,7 @@ final class Plugin {
 	 * attachments from being displayed in the Media Library, block editor,
 	 * and other admin areas where attachments are queried.
 	 *
-	 * @param WP_Query $query The WP_Query instance (passed by reference).
+	 * @param \WP_Query $query The WP_Query instance (passed by reference).
 	 *                        It is modified in place to filter attachments.
 	 *
 	 * @return void
