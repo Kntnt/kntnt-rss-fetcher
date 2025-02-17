@@ -68,7 +68,7 @@ final class Plugin {
 		add_action( 'kntnt_rss_fetch', [ $this, 'fetch_rss' ] );
 		add_action( 'pre_get_posts', [ $this, 'hide_rss_images' ] );
 		add_action( 'trashed_post', [ $this, 'skip_trash' ] );
-		add_action( 'delete_post', [ $this, 'delete_image_with_post' ] );
+		add_action( 'before_delete_post', [ $this, 'delete_image_with_post' ] );
 
 		self::log( Level::INFO, 'Hooks registered' );
 
@@ -261,7 +261,7 @@ final class Plugin {
 	 * and other admin areas where attachments are queried.
 	 *
 	 * @param \WP_Query $query The WP_Query instance (passed by reference).
-	 *                        It is modified in place to filter attachments.
+	 *                         It is modified in place to filter attachments.
 	 *
 	 * @return void
 	 */
@@ -299,7 +299,7 @@ final class Plugin {
 	 */
 	public function delete_image_with_post( int $post_id ): void {
 
-		if ( 'kntnt-rss-item' !== get_post_type( $post_id ) ) {
+		if ( get_post_type( $post_id ) !== 'kntnt-rss-item' ) {
 			return;
 		}
 
