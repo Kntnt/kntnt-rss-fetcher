@@ -834,7 +834,7 @@ final class Plugin {
 			'post_type' => 'kntnt-rss-item',
 			'posts_per_page' => - 1,
 			'orderby'          => 'date',
-			'order'            => 'DESC',
+			'order'            => 'ASC',
 			'fields' => 'ids',
 			'meta_query' => [
 				[
