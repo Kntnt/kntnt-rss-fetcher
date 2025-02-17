@@ -55,58 +55,6 @@ enum Level: int {
 final class Plugin {
 
 	/**
-	 * If `$message` isn't a string, its value is printed. If `$message` is
-	 * a string, it is written with each occurrence of '%s' replaced with
-	 * the value of the corresponding additional argument converted to string.
-	 * Any percent sign that should be written must be escaped with another
-	 * percent sign, that is `%%`.
-	 *
-	 * @param Level $level   Log level
-	 * @param mixed $message [Optional] String with %s where to print remaining arguments, or a single scalar, array, or object.
-	 * @param       ...$args [Optional] Scalars, arrays, and objects to replace %s in message with
-	 *
-	 * @return void
-	 */
-	private static function log( Level $level, mixed $message = '', ...$args ): void {
-
-		// Skip if debugging is disabled
-		if ( ! defined( 'WP_DEBUG' ) || ! constant( 'WP_DEBUG' ) ) {
-			return;
-		}
-
-		// Skip if either:
-		// - it's not an ERROR message and KNTNT_RSS_FETCHER_DEBUG is not defined
-		// - message level is higher than KNTNT_RSS_FETCHER_DEBUG
-		if ( $level !== Level::ERROR && ( ! defined( 'KNTNT_RSS_FETCHER_DEBUG' ) || $level > constant( 'KNTNT_RSS_FETCHER_DEBUG' ) ) ) {
-			return;
-		}
-
-		// Handle the case no message is given, but just
-		if ( ! is_string( $message ) ) {
-			if ( is_scalar( $message ) ) {
-				$args = [ $message ];
-			}
-			$message = '%s';
-		}
-
-		// Stringify the arguments
-		foreach ( $args as &$arg ) {
-			if ( is_array( $arg ) || is_object( $arg ) ) {
-				$arg = print_r( $arg, true );
-			}
-		}
-
-		// Get the caller path
-		$caller = debug_backtrace( DEBUG_BACKTRACE_IGNORE_ARGS, 2 );
-		$caller = $caller[1]['class'] . '->' . $caller[1]['function'] . '()';
-
-		// Output the log message
-		$message = sprintf( $message, ...$args );
-		error_log( "$caller: $message" );
-
-	}
-
-	/**
 	 * The constructor adds hooks. The whole plugin is driven by these hooks.
 	 */
 	public function __construct() {
@@ -371,21 +319,54 @@ final class Plugin {
 	}
 
 	/**
-	 * Reschedules the RSS feed fetching cron job.
+	 * If `$message` isn't a string, its value is printed. If `$message` is
+	 * a string, it is written with each occurrence of '%s' replaced with
+	 * the value of the corresponding additional argument converted to string.
+	 * Any percent sign that should be written must be escaped with another
+	 * percent sign, that is `%%`.
 	 *
-	 * Removes existing cron schedule, executes an immediate feed fetch,
-	 * and schedules the next cron run. This ensures feeds are current
-	 * after any configuration changes.
+	 * @param Level $level   Log level
+	 * @param mixed $message [Optional] String with %s where to print remaining arguments, or a single scalar, array, or object.
+	 * @param       ...$args [Optional] Scalars, arrays, and objects to replace %s in message with
 	 *
 	 * @return void
 	 */
-	private function reschedule_cron(): void {
+	private static function log( Level $level, mixed $message = '', ...$args ): void {
 
-		$this->deschedule_cron();
-		$this->fetch_rss();
-		$this->schedule_cron();
+		// Skip if debugging is disabled
+		if ( ! defined( 'WP_DEBUG' ) || ! constant( 'WP_DEBUG' ) ) {
+			return;
+		}
 
-		self::log( Level::INFO, 'Fetched all RSS feeds and rescheduled future fetches.' );
+		// Skip if either:
+		// - it's not an ERROR message and KNTNT_RSS_FETCHER_DEBUG is not defined
+		// - message level is higher than KNTNT_RSS_FETCHER_DEBUG
+		if ( $level !== Level::ERROR && ( ! defined( 'KNTNT_RSS_FETCHER_DEBUG' ) || $level > constant( 'KNTNT_RSS_FETCHER_DEBUG' ) ) ) {
+			return;
+		}
+
+		// Handle the case no message is given, but just
+		if ( ! is_string( $message ) ) {
+			if ( is_scalar( $message ) ) {
+				$args = [ $message ];
+			}
+			$message = '%s';
+		}
+
+		// Stringify the arguments
+		foreach ( $args as &$arg ) {
+			if ( is_array( $arg ) || is_object( $arg ) ) {
+				$arg = print_r( $arg, true );
+			}
+		}
+
+		// Get the caller path
+		$caller = debug_backtrace( DEBUG_BACKTRACE_IGNORE_ARGS, 2 );
+		$caller = $caller[1]['class'] . '->' . $caller[1]['function'] . '()';
+
+		// Output the log message
+		$message = sprintf( $message, ...$args );
+		error_log( "$caller: $message" );
 
 	}
 
@@ -409,6 +390,25 @@ final class Plugin {
 		else {
 			self::log( Level::ERROR, 'Failed to schedule kntnt_rss_fetch event' );
 		}
+
+	}
+
+	/**
+	 * Reschedules the RSS feed fetching cron job.
+	 *
+	 * Removes existing cron schedule, executes an immediate feed fetch,
+	 * and schedules the next cron run. This ensures feeds are current
+	 * after any configuration changes.
+	 *
+	 * @return void
+	 */
+	private function reschedule_cron(): void {
+
+		$this->deschedule_cron();
+		$this->fetch_rss();
+		$this->schedule_cron();
+
+		self::log( Level::INFO, 'Fetched all RSS feeds and rescheduled future fetches.' );
 
 	}
 
@@ -596,6 +596,25 @@ final class Plugin {
 	}
 
 	/**
+	 * Truncates a long text to create a title, ensuring it doesn't exceed 50 characters,
+	 * breaking only at word boundaries. If truncated, adds an ellipsis to the end.
+	 *
+	 * @param string $title Text to be truncated into a title.
+	 *
+	 * @return string Truncated text with ellipsis if shortened, original text if under limit.
+	 */
+	private function generate_title_from_description( string $title ): string {
+		if ( strlen( $title ) > 50 ) {
+			$words = explode( ' ', $title );
+			while ( strlen( $title = implode( ' ', $words ) ) > 50 ) {
+				array_pop( $words );
+			}
+			$title = "{$title}…";
+		}
+		return $title;
+	}
+
+	/**
 	 * Extracts an image URL from a feed item, checking multiple potential sources.
 	 *
 	 * Checks sources in this order:
@@ -631,25 +650,6 @@ final class Plugin {
 
 		return null;
 
-	}
-
-	/**
-	 * Truncates a long text to create a title, ensuring it doesn't exceed 50 characters,
-	 * breaking only at word boundaries. If truncated, adds an ellipsis to the end.
-	 *
-	 * @param string $title Text to be truncated into a title.
-	 *
-	 * @return string Truncated text with ellipsis if shortened, original text if under limit.
-	 */
-	private function generate_title_from_description( string $title ): string {
-		if ( strlen( $title ) > 50 ) {
-			$words = explode( ' ', $title );
-			while ( strlen( $title = implode( ' ', $words ) ) > 50 ) {
-				array_pop( $words );
-			}
-			$title = "{$title}…";
-		}
-		return $title;
 	}
 
 	/**
