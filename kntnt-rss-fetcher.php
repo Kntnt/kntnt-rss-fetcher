@@ -3,7 +3,7 @@
  * @package Kntnt\RSSFetcher
  * Plugin Name:       Kntnt RSS Fetcher
  * Description:       Fetches and displays content from multiple RSS feeds, with flexible configuration.
- * Version:           0.1.2
+ * Version:           0.1.3
  * Tags:              rss, feed, aggregator, content
  * Plugin URI:        https://github.com/Kntnt/kntnt-rss-fetcher
  * Tested up to: 6.7
@@ -170,6 +170,12 @@ final class Plugin {
 	 */
 	public function fetch_rss(): void {
 
+		// Ensure cron is scheduled (robustness check)
+		if ( ! wp_next_scheduled( 'kntnt_rss_fetch' ) ) {
+			self::log( Level::WARNING, 'Cron job was not scheduled. Rescheduling now.' );
+			$this->schedule_cron();
+		}
+
 		// Get all feeds
 		if ( empty( $feed_configs = $this->feed_configs() ) ) {
 			self::log( Level::WARNING, 'No feeds configured.' );
@@ -219,9 +225,8 @@ final class Plugin {
 					else {
 						self::log( Level::DEBUG, 'No image found' );
 					}
+					$rss_id_table[ $item_id ] = $post_id;
 				}
-
-				$rss_id_table[ $item_id ] = $post_id;
 
 			}
 
