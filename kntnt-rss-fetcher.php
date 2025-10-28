@@ -3,7 +3,7 @@
  * @package Kntnt\RSSFetcher
  * Plugin Name:       Kntnt RSS Fetcher
  * Description:       Fetches and displays content from multiple RSS feeds, with flexible configuration.
- * Version:           0.1.3
+ * Version:           1.1.0
  * Tags:              rss, feed, aggregator, content
  * Plugin URI:        https://github.com/Kntnt/kntnt-rss-fetcher
  * Tested up to: 6.7
