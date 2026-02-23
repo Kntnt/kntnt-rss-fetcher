@@ -3,7 +3,7 @@
  * @package Kntnt\RSSFetcher
  * Plugin Name:       Kntnt RSS Fetcher
  * Description:       Fetches and displays content from multiple RSS feeds, with flexible configuration.
- * Version:           1.1.0
+ * Version:           1.1.1
  * Tags:              rss, feed, aggregator, content
  * Plugin URI:        https://github.com/Kntnt/kntnt-rss-fetcher
  * Tested up to: 6.7
@@ -190,6 +190,14 @@ final class Plugin {
 			$max_items = $feed_config['max_items'];
 			$tags = $feed_config['tags'];
 			$rss_id_table = $this->rss_id_table( $feed_config['url'] );
+
+			// Clear any stale feed cache to ensure fresh data.
+			// WordPress caches feed responses as site transients for 12 hours
+			// by default. Since the cron schedule already controls fetch timing,
+			// the cache only risks serving outdated data.
+			$md5 = md5( $url );
+			delete_site_transient( 'feed_' . $md5 );
+			delete_site_transient( 'feed_mod_' . $md5 );
 
 			self::log( Level::INFO, 'Fetching feed from URL: %s', $url );
 			$feed = fetch_feed( $url );
@@ -640,7 +648,7 @@ final class Plugin {
 		}
 
 		// Check enclosures - already sanitized by SimplePie
-		$enclosures = $item->get_enclosures();
+		$enclosures = $item->get_enclosures() ?? [];
 		foreach ( $enclosures as $enclosure ) {
 			if ( str_starts_with( $enclosure->get_type(), 'image' ) ) {
 				return $enclosure->get_link();
